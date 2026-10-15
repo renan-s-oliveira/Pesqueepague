@@ -5,10 +5,10 @@ import { Rng } from '../utils/rng.ts';
  * Mesmo id, sampleRate e seed geram exatamente as mesmas amostras.
  */
 
-export const LOOP_IDS = ['forest', 'water', 'birds', 'menuMusic'] as const;
+export const LOOP_IDS = ['forest', 'water', 'waves', 'wind', 'birds', 'insects', 'rain', 'menuMusic'] as const;
 export type LoopId = (typeof LOOP_IDS)[number];
 
-export const SFX_IDS = ['cast', 'splash', 'line', 'bite', 'catch', 'fail'] as const;
+export const SFX_IDS = ['cast', 'splash', 'line', 'bite', 'catch', 'fail', 'tension', 'jump', 'weigh', 'achievement'] as const;
 export type SfxId = (typeof SFX_IDS)[number];
 
 export type SoundId = LoopId | SfxId;
@@ -32,6 +32,8 @@ export interface SoundSpec {
   readonly seamSeconds: number;
   /** Nível da voz antes do ganho de música/efeitos. */
   readonly gain: number;
+  /** Quantas variações (seeds distintas) o som tem; loops usam 1. */
+  readonly variants: number;
   readonly generate: SoundGenerator;
 }
 
@@ -321,17 +323,169 @@ export const generateFail: SoundGenerator = (out, sampleRate, rng) => {
   fadeEdges(out, sampleRate, 0.002, 0.03);
 };
 
+/** Ondas na margem: ruído grave que chega em levas lentas, uma de cada vez. */
+export const generateWaves: SoundGenerator = (out, sampleRate, rng) => {
+  const a = onePoleCoef(400, sampleRate);
+  const phase = rng.range(0, TAU);
+  let lp = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / sampleRate;
+    lp += a * (noise(rng) - lp);
+    const swell = Math.max(0, Math.sin(TAU * t * 0.22 + phase)) ** 3;
+    const wash = Math.max(0, Math.sin(TAU * t * 0.22 + phase - 0.9)) ** 2;
+    out[i] = lp * (2 + 10 * swell) + lp * 4 * wash;
+  }
+  normalize(out, 0.8);
+};
+
+/** Vento aberto, sem folhas: ruído em passa-baixa dupla com rajadas lentas. */
+export const generateWind: SoundGenerator = (out, sampleRate, rng) => {
+  const a = onePoleCoef(250, sampleRate);
+  const phase = rng.range(0, TAU);
+  let w = 0;
+  let w2 = 0;
+  for (let i = 0; i < out.length; i++) {
+    const t = i / sampleRate;
+    w += a * (noise(rng) - w);
+    w2 += a * (w - w2);
+    const gust = 0.5 + 0.35 * Math.sin((TAU * t) / 5.3 + phase) + 0.15 * Math.sin((TAU * t) / 1.7 + 2 * phase);
+    out[i] = w2 * 8 * gust;
+  }
+  normalize(out, 0.8);
+};
+
+/** Insetos da noite: grilos em pulsos curtos de tom quase puro, espaçados ao acaso. */
+export const generateInsects: SoundGenerator = (out, sampleRate, rng) => {
+  const seconds = out.length / sampleRate;
+  const chirps = Math.max(2, Math.round(seconds * 2.2));
+  for (let c = 0; c < chirps; c++) {
+    const start = Math.floor(rng.range(0, Math.max(0.01, seconds - 0.4)) * sampleRate);
+    const f = rng.range(1050, 1350);
+    const pulses = rng.int(3, 6);
+    const amp = rng.range(0.25, 0.8);
+    for (let p = 0; p < pulses; p++) {
+      const pStart = start + Math.floor(p * 0.055 * sampleRate);
+      const len = Math.max(1, Math.floor(0.03 * sampleRate));
+      let phase = 0;
+      for (let k = 0; k < len; k++) {
+        const u = k / len;
+        phase += (TAU * f) / sampleRate;
+        add(out, pStart + k, amp * Math.sin(phase) * Math.sin(Math.PI * u));
+      }
+    }
+  }
+  normalize(out, 0.5);
+};
+
+/** Chuva: ruído largo filtrado com pingos mais pesados por cima. */
+export const generateRain: SoundGenerator = (out, sampleRate, rng) => {
+  const aBody = onePoleCoef(1200, sampleRate);
+  const aHiss = onePoleCoef(300, sampleRate);
+  let body = 0;
+  let low = 0;
+  for (let i = 0; i < out.length; i++) {
+    const n = noise(rng);
+    body += aBody * (n - body);
+    low += aHiss * (n - low);
+    out[i] = body * 1.2 + (n - low) * 0.35;
+  }
+  const drops = Math.max(4, Math.round((out.length / sampleRate) * 6));
+  for (let d = 0; d < drops; d++) {
+    addDroplet(out, sampleRate, rng.int(0, out.length - 1), rng.range(900, 2000), rng.range(0.04, 0.1));
+  }
+  normalize(out, 0.8);
+};
+
+/** Linha tensionada: rangido em passa-faixa subindo com trêmulo e um gemido grave caindo. */
+export const generateTension: SoundGenerator = (out, sampleRate, rng) => {
+  const filter = new BandPass();
+  const f0 = rng.range(700, 1000);
+  let phase = 0;
+  for (let i = 0; i < out.length; i++) {
+    const u = i / out.length;
+    const t = i / sampleRate;
+    const creak = filter.process(noise(rng), f0 * (1 + 0.5 * u), 0.3, sampleRate);
+    phase += (TAU * (90 - 30 * u)) / sampleRate;
+    out[i] = creak * (0.6 + 0.4 * Math.sin(TAU * 13 * t)) + 0.3 * Math.sin(phase) * (1 - u);
+  }
+  normalize(out, 0.7);
+  fadeEdges(out, sampleRate, 0.005, 0.03);
+};
+
+/** Salto do peixe: zunido subindo, queda com baque grave e respingos. */
+export const generateJump: SoundGenerator = (out, sampleRate, rng) => {
+  const filter = new BandPass();
+  const whooshLen = Math.min(out.length, Math.floor(0.25 * sampleRate));
+  for (let i = 0; i < whooshLen; i++) {
+    const u = i / whooshLen;
+    out[i] = filter.process(noise(rng), 250 + 1400 * u, 0.5, sampleRate) * Math.sin(Math.PI * u);
+  }
+  const a = onePoleCoef(2000, sampleRate);
+  let lp = 0;
+  let phase = 0;
+  const start = Math.floor(0.28 * sampleRate);
+  for (let k = start; k < out.length; k++) {
+    const tau = (k - start) / sampleRate;
+    phase += (TAU * (60 + 80 * Math.exp(-tau / 0.05))) / sampleRate;
+    lp += a * (noise(rng) - lp);
+    add(out, k, Math.sin(phase) * Math.exp(-tau / 0.1) + lp * 3 * Math.exp(-tau / 0.15));
+  }
+  for (let d = 0; d < 5; d++) {
+    addDroplet(out, sampleRate, Math.floor(rng.range(0.3, 0.7) * sampleRate), rng.range(700, 1800), rng.range(0.1, 0.25));
+  }
+  normalize(out, 0.9);
+  fadeEdges(out, sampleRate, 0.002, 0.02);
+};
+
+/** Pesagem: mola da balança oscilando até parar e um toque agudo de confirmação. */
+export const generateWeigh: SoundGenerator = (out, sampleRate, rng) => {
+  const wobble = rng.range(5, 7);
+  const len = Math.min(out.length, Math.floor(0.5 * sampleRate));
+  let phase = 0;
+  for (let k = 0; k < len; k++) {
+    const tau = k / sampleRate;
+    phase += (TAU * (220 + 40 * Math.sin(TAU * wobble * tau) * Math.exp(-tau / 0.2))) / sampleRate;
+    out[k] = 0.6 * Math.sin(phase) * Math.exp(-tau / 0.25);
+  }
+  addTone(out, sampleRate, 0.45, 0.5, 988, 988, 0.5);
+  normalize(out, 0.8);
+  fadeEdges(out, sampleRate, 0.002, 0.03);
+};
+
+/** Conquista: fanfarra curta ascendente com leve desafino sorteado. */
+export const generateAchievement: SoundGenerator = (out, sampleRate, rng) => {
+  const detune = rng.range(0.995, 1.005);
+  const notes: readonly (readonly [number, number])[] = [
+    [659.25, 0],
+    [783.99, 0.12],
+    [987.77, 0.24],
+    [1318.5, 0.36],
+  ];
+  for (const [f, t] of notes) addTone(out, sampleRate, t, 0.6, f * detune, f * detune, 0.5);
+  addTone(out, sampleRate, 0.36, 0.7, 659.25 * detune, 659.25 * detune, 0.25);
+  normalize(out, 0.8);
+  fadeEdges(out, sampleRate, 0.002, 0.03);
+};
+
 export const SOUND_SPECS: Readonly<Record<SoundId, SoundSpec>> = {
-  forest: { seconds: 12, loop: true, seamSeconds: 0.5, gain: 0.5, generate: generateForest },
-  water: { seconds: 10, loop: true, seamSeconds: 0.5, gain: 0.35, generate: generateWater },
-  birds: { seconds: 14, loop: true, seamSeconds: 0.3, gain: 0.25, generate: generateBirds },
-  menuMusic: { seconds: 16, loop: true, seamSeconds: 0, gain: 0.5, generate: generateMenuPad },
-  cast: { seconds: 0.5, loop: false, seamSeconds: 0, gain: 0.8, generate: generateCast },
-  splash: { seconds: 0.7, loop: false, seamSeconds: 0, gain: 0.9, generate: generateSplash },
-  line: { seconds: 0.6, loop: false, seamSeconds: 0, gain: 0.5, generate: generateLine },
-  bite: { seconds: 0.4, loop: false, seamSeconds: 0, gain: 0.9, generate: generateBite },
-  catch: { seconds: 1.4, loop: false, seamSeconds: 0, gain: 0.8, generate: generateCatch },
-  fail: { seconds: 0.9, loop: false, seamSeconds: 0, gain: 0.8, generate: generateFail },
+  forest: { seconds: 12, loop: true, seamSeconds: 0.5, gain: 0.5, variants: 1, generate: generateForest },
+  water: { seconds: 10, loop: true, seamSeconds: 0.5, gain: 0.35, variants: 1, generate: generateWater },
+  waves: { seconds: 11, loop: true, seamSeconds: 0.5, gain: 0.3, variants: 1, generate: generateWaves },
+  wind: { seconds: 9, loop: true, seamSeconds: 0.5, gain: 0.4, variants: 1, generate: generateWind },
+  birds: { seconds: 14, loop: true, seamSeconds: 0.3, gain: 0.25, variants: 1, generate: generateBirds },
+  insects: { seconds: 12, loop: true, seamSeconds: 0.3, gain: 0.22, variants: 1, generate: generateInsects },
+  rain: { seconds: 8, loop: true, seamSeconds: 0.5, gain: 0.5, variants: 1, generate: generateRain },
+  menuMusic: { seconds: 16, loop: true, seamSeconds: 0, gain: 0.5, variants: 1, generate: generateMenuPad },
+  cast: { seconds: 0.5, loop: false, seamSeconds: 0, gain: 0.8, variants: 3, generate: generateCast },
+  splash: { seconds: 0.7, loop: false, seamSeconds: 0, gain: 0.9, variants: 3, generate: generateSplash },
+  line: { seconds: 0.6, loop: false, seamSeconds: 0, gain: 0.5, variants: 2, generate: generateLine },
+  bite: { seconds: 0.4, loop: false, seamSeconds: 0, gain: 0.9, variants: 2, generate: generateBite },
+  catch: { seconds: 1.4, loop: false, seamSeconds: 0, gain: 0.8, variants: 2, generate: generateCatch },
+  fail: { seconds: 0.9, loop: false, seamSeconds: 0, gain: 0.8, variants: 2, generate: generateFail },
+  tension: { seconds: 0.5, loop: false, seamSeconds: 0, gain: 0.6, variants: 2, generate: generateTension },
+  jump: { seconds: 0.9, loop: false, seamSeconds: 0, gain: 0.85, variants: 2, generate: generateJump },
+  weigh: { seconds: 1, loop: false, seamSeconds: 0, gain: 0.7, variants: 2, generate: generateWeigh },
+  achievement: { seconds: 1.2, loop: false, seamSeconds: 0, gain: 0.8, variants: 2, generate: generateAchievement },
 };
 
 function assertSampleRate(sampleRate: number): void {

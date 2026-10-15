@@ -35,6 +35,17 @@ class FakeGain extends FakeNode {
   readonly gain = new FakeParam(1);
 }
 
+class FakePanner extends FakeNode {
+  panningModel = 'HRTF';
+  distanceModel = 'inverse';
+  refDistance = 0;
+  maxDistance = 0;
+  rolloffFactor = 0;
+  readonly positionX = new FakeParam(0);
+  readonly positionY = new FakeParam(0);
+  readonly positionZ = new FakeParam(0);
+}
+
 class FakeBuffer {
   private readonly data: Float32Array;
   constructor(
@@ -74,6 +85,9 @@ class FakeContext {
   allowResume = true;
   createGain(): FakeGain {
     return new FakeGain();
+  }
+  createPanner(): FakePanner {
+    return new FakePanner();
   }
   createBufferSource(): FakeSource {
     const source = new FakeSource();

@@ -14,6 +14,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],
+  expect: {
+    // Tolerância da regressão visual: a água e o céu animam com o tempo real, então a
+    // comparação absorve o deslocamento de fase, mas reprova mudança de paleta ou layout.
+    toHaveScreenshot: { maxDiffPixelRatio: 0.12, threshold: 0.35, animations: 'disabled' },
+  },
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     viewport: { width: 1280, height: 720 },

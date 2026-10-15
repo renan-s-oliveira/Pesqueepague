@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { GraphicsQualityManager, QUALITY_SETTINGS } from './GraphicsQualityManager.ts';
+import {
+  GraphicsQualityManager,
+  QUALITY_LEVELS,
+  QUALITY_PRESETS,
+  QUALITY_PRESET_LABELS,
+  QUALITY_SETTINGS,
+  isQualityPreset,
+} from './GraphicsQualityManager.ts';
 
 function feed(manager: GraphicsQualityManager, frameMs: number, frames: number): number {
   let changes = 0;
@@ -85,7 +92,71 @@ describe('GraphicsQualityManager', () => {
     expect(QUALITY_SETTINGS.high.pixelRatioScale).toBeGreaterThan(QUALITY_SETTINGS.low.pixelRatioScale);
   });
 
+  it('oferece os cinco presets com rótulo e o Ultra acima do Alto', () => {
+    expect(QUALITY_PRESETS).toEqual(['low', 'medium', 'high', 'ultra', 'auto']);
+    for (const p of QUALITY_PRESETS) {
+      expect(isQualityPreset(p)).toBe(true);
+      expect(QUALITY_PRESET_LABELS[p].length).toBeGreaterThan(0);
+    }
+    expect(isQualityPreset('insano')).toBe(false);
+    const { high, ultra } = QUALITY_SETTINGS;
+    expect(ultra.shadowMapSize).toBeGreaterThan(high.shadowMapSize);
+    expect(ultra.postProcessing.ambientOcclusion).toBeGreaterThan(high.postProcessing.ambientOcclusion);
+    expect(ultra.postProcessing.antialias).toBe('smaa');
+    expect(QUALITY_SETTINGS.low.postProcessing).toEqual({ antialias: 'fxaa', ambientOcclusion: 0, bloomStrength: 0 });
+    for (const level of QUALITY_LEVELS) expect(QUALITY_SETTINGS[level].postProcessing.bloomStrength).toBeLessThanOrEqual(0.2);
+  });
+
+  it('preset ultra fixo não se adapta', () => {
+    const manager = new GraphicsQualityManager({ ...base, preset: 'ultra' });
+    expect(manager.level).toBe('ultra');
+    expect(feed(manager, 80, 100)).toBe(0);
+    expect(manager.level).toBe('ultra');
+  });
+
+  it('o auto nunca sobe até o Ultra', () => {
+    const manager = new GraphicsQualityManager({ ...base, initialLevel: 'low' });
+    feed(manager, 5, 500);
+    expect(manager.level).toBe('high');
+    manager.setPreset('ultra');
+    expect(manager.level).toBe('ultra');
+    manager.setPreset('auto');
+    expect(manager.level).toBe('high');
+  });
+
+  it('auto reduz a resolução antes de baixar o nível e devolve antes de subir', () => {
+    const manager = new GraphicsQualityManager({ ...base, minResolutionScale: 0.7, initialLevel: 'high' });
+    expect(manager.resolutionScale).toBe(1);
+    feed(manager, 40, 10);
+    expect(manager.level).toBe('high');
+    expect(manager.resolutionScale).toBe(0.9);
+    feed(manager, 40, 20);
+    expect(manager.resolutionScale).toBe(0.7);
+    expect(manager.pixelRatioScale).toBeCloseTo(QUALITY_SETTINGS.high.pixelRatioScale * 0.7);
+    feed(manager, 40, 10);
+    expect(manager.level).toBe('medium');
+    expect(manager.resolutionScale).toBe(1);
+
+    feed(manager, 40, 10);
+    expect(manager.resolutionScale).toBe(0.9);
+    feed(manager, 10, 10);
+    expect(manager.level).toBe('medium');
+    expect(manager.resolutionScale).toBe(1);
+    feed(manager, 10, 10);
+    expect(manager.level).toBe('high');
+  });
+
+  it('presets fixos zeram a escala dinâmica', () => {
+    const manager = new GraphicsQualityManager({ ...base, minResolutionScale: 0.5 });
+    feed(manager, 40, 10);
+    expect(manager.resolutionScale).toBe(0.9);
+    expect(manager.setPreset('high')).toBe(true);
+    expect(manager.resolutionScale).toBe(1);
+    expect(feed(manager, 40, 50)).toBe(0);
+  });
+
   it('rejeita opções inválidas', () => {
+    expect(() => new GraphicsQualityManager({ minResolutionScale: 0.2 })).toThrow(RangeError);
     expect(() => new GraphicsQualityManager({ windowSize: 0 })).toThrow(RangeError);
     expect(() => new GraphicsQualityManager({ downgradeAboveMs: 10, upgradeBelowMs: 20 })).toThrow(RangeError);
     expect(() => new GraphicsQualityManager({ minLevel: 'high', maxLevel: 'low' })).toThrow(RangeError);

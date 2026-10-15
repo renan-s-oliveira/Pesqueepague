@@ -20,6 +20,16 @@ describe('GameStateMachine', () => {
     expect(m.state).toBe('ESCAPED');
   });
 
+  it('LINE_BROKEN leva HOOKED e REELING a ESCAPED e é rejeitado fora da briga', () => {
+    const reeling = machineAt([...TO_IDLE, 'CAST', 'LURE_LANDED', 'BITE', 'HOOK_SET', 'LINE_BROKEN']);
+    expect(reeling.state).toBe('ESCAPED');
+    const hooked = machineAt([...TO_IDLE, 'CAST', 'LURE_LANDED', 'BITE', 'LINE_BROKEN']);
+    expect(hooked.state).toBe('ESCAPED');
+    const waiting = machineAt([...TO_IDLE, 'CAST', 'LURE_LANDED']);
+    expect(waiting.dispatch({ type: 'LINE_BROKEN' }).status).toBe('rejected');
+    expect(waiting.state).toBe('WAITING');
+  });
+
   it('rejeita transição inválida sem mudar de estado', () => {
     const m = new GameStateMachine();
     const result = m.dispatch({ type: 'CAST' });

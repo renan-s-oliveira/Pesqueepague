@@ -41,6 +41,10 @@ Os comandos do Playwright sobem o próprio servidor (`vite --mode e2e` em `127.0
 | Botão esquerdo / Espaço — clicar | Com a boia na água (WAITING): recolhe a isca sem peixe. |
 | Botão esquerdo / Espaço — clicar | Quando aparece “Mordeu!” (HOOKED): fisga. |
 | Botão esquerdo / Espaço — segurar | Na briga (REELING): recolhe a linha; solte quando a tensão ficar no vermelho para ela não arrebentar. |
+| R — segurar | Recolhe a linha (mesma ação do botão, pela camada de ações de `src/core/input.ts`). |
+| `+` / `-` | Aperta ou solta o drag do molinete. |
+| 1, 2, 3 | Velocidade de recolhimento. |
+| Setas / A, D | Movem a vara / mudam a direção do arremesso. |
 | Botão esquerdo / Espaço — clicar | Na tela de resultado: continua pescando. |
 | **ESC** | Pausa e retoma. Sair do pointer lock (o navegador consome o ESC) também pausa. |
 | **H** | Mostra ou esconde a ajuda na tela durante o jogo. |
@@ -57,8 +61,8 @@ A máquina de estados explícita fica em `src/core/stateMachine.ts`. Eventos que
 BOOT --BOOTED--> LOADING --LOADED--> MENU --START--> IDLE
 IDLE     --CAST--------> CASTING --LURE_LANDED--> WAITING
 WAITING  --BITE--------> HOOKED   | WAITING --REEL_IN--> IDLE
-HOOKED   --HOOK_SET----> REELING  | HOOKED  --FISH_ESCAPED--> ESCAPED
-REELING  --FISH_LANDED-> CAUGHT   | REELING --FISH_ESCAPED--> ESCAPED
+HOOKED   --HOOK_SET----> REELING  | HOOKED  --FISH_ESCAPED--> ESCAPED  | HOOKED  --LINE_BROKEN--> ESCAPED
+REELING  --FISH_LANDED-> CAUGHT   | REELING --FISH_ESCAPED--> ESCAPED  | REELING --LINE_BROKEN--> ESCAPED
 CAUGHT / ESCAPED --CONTINUE--> IDLE   (ou --QUIT--> MENU)
 IDLE --QUIT--> MENU
 ```
@@ -88,6 +92,16 @@ O jogo guarda um único item no `localStorage`, na chave `pesqueepague.save` (sc
 
 Não há dado pessoal. Ao carregar, cada campo é validado: valor fora da faixa volta ao padrão, JSON inválido ou maior que 64 KB é descartado e o save da versão 1 é migrado. Se o `localStorage` estiver bloqueado, o jogo funciona sem salvar. Para zerar tudo, apague a chave `pesqueepague.save` nas ferramentas do navegador.
 
+### Galeria em IndexedDB (`src/save/`)
+
+As capturas individuais (contrato `CatchRecord` de `src/progression/types.ts`), fotos como `Blob`, inventário e conquistas ficam no IndexedDB, banco `pesqueepague`:
+
+- `db.ts`: wrapper fino sobre IndexedDB, sem dependência nova; a versão do banco é o número de migrações e o `onupgradeneeded` aplica, em ordem, só as que faltam.
+- `storage.ts`: `IndexedDbAdapter` (banco real) e `MemoryAdapter` (testes), sobre a mesma interface `SaveStorage`.
+- `catchRepository.ts`: CRUD de capturas com consultas por espécie, raridade, local, faixa de peso e de data, fotos, inventário e conquistas. `migrateLegacySave` copia o `bestCatch` e o `stats` do `pesqueepague.save` uma única vez (marca no store `meta`); as configurações, inclusive `settings.lureId`, continuam no `localStorage`.
+
+Com o IndexedDB bloqueado ou indisponível, o jogo segue com um aviso no console e sem gravar capturas. No build `--mode e2e`, `window.__fp` ganha `saveCatch(record)`, `getCatch(id)` e `listCatches()` (`e2e/save.e2e.ts` grava, recarrega e encontra).
+
 ## Arquitetura (`src/`)
 
 | Pasta | Responsabilidade |
@@ -97,7 +111,7 @@ Não há dado pessoal. Ao carregar, cada campo é validado: valor fora da faixa 
 | `config/` | Configuração validada (`gameConfig.ts`) e persistência com schema versionado (`persistence.ts`). |
 | `engine/` | Renderizador WebGL2, câmera em primeira pessoa e gerenciador de qualidade gráfica. |
 | `scenes/` | `lakeScene.ts`: a cena única do lago e o loop de renderização. |
-| `world/` | Terreno, água (shader), céu, iluminação, vegetação instanciada, píer, partículas, ruído e descarte de recursos. |
+| `world/` | Terreno, água (shader), céu, iluminação, vegetação instanciada, píer, partículas (pólen e chuva), ciclo de dia e noite (`timeOfDay.ts`), clima (`weather.ts`), ruído e descarte de recursos. |
 | `fishing/` | Regras de arremesso (`cast.ts`) e de recolhimento/tensão (`reel.ts`); `visuals/` desenha vara, linha e boia. |
 | `fish/` | Tabela de espécies e comportamento do peixe (`fishBrain.ts`: beliscada, mordida, fuga, puxão). |
 | `gameplay/` | `fishingSession.ts`: liga as regras de pesca à máquina de estados, com diário e placar da sessão. |
@@ -109,6 +123,14 @@ Não há dado pessoal. Ao carregar, cada campo é validado: valor fora da faixa 
 | `tests/` | Testes unitários de integração (pesca, peixes, persistência, determinismo); outros testes ficam ao lado do módulo (`*.test.ts`). |
 
 Os testes E2E ficam em `e2e/` e a configuração em `playwright.config.ts`.
+
+### Atmosfera: hora, clima e vento
+
+- `world/timeOfDay.ts` (sem three): `TimeOfDay` guarda a hora em [0, 24) e avança com o delta do loop (padrão: 1 hora do jogo por minuto, começando às 16h). `paletteAt(h)`, `sunDirectionAt(h)` e `moonDirectionAt(h)` são funções puras: mesma hora, mesmo resultado.
+- `world/weather.ts` (sem three): `Weather` tem os climas `clear`, `cloudy` e `rain`, com transição suave de nuvens, chuva, névoa e vento. `fogRange(densidade, luzDoDia)` dá o near/far da névoa.
+- **`Weather.getWind()`** devolve o vetor de vento compartilhado `{ x, z, speed }` em m/s no plano XZ, já com a rajada. É sempre o mesmo objeto, atualizado no lugar a cada `update`, então quem lê não aloca nada. O vento é determinístico: depende só do tempo acumulado e do clima. Hoje quem lê é `lakeScene.ts`, que repassa o vento às nuvens (`Sky.update`), ao pólen (`AmbientParticles.update`) e à chuva (`RainParticles.update`). A água, a vegetação e o arremesso devem ler o vento pelo mesmo `lake.weather.getWind()`, sem criar outro.
+- `scenes/lakeScene.ts` junta tudo em `updateAtmosphere`: cores do céu e da água (`SKY_COLORS`), sol ou lua como luz direcional, luz hemisférica com piso de 0,35 (para a sombra não ficar preta), `Fog` cujo alcance depende da hora e do clima, e o environment map PMREM gerado do céu (`Lighting.updateEnvironment`). O PMREM só é refeito a cada 0,25 h ou quando a cobertura de nuvens muda 0,1.
+- No build `--mode e2e`, `window.__fp` ganha `setTime(h)`, `setWeather('clear' | 'cloudy' | 'rain')` e `getAtmosphere()`.
 
 ## Assets e licenças
 

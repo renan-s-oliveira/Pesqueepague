@@ -1,5 +1,18 @@
 import type { Rng } from '../utils/rng.ts';
+import type { FishIndividual } from '../progression/types.ts';
 import { fightPull, type FishSpecies } from './species.ts';
+
+export {
+  BEHAVIOR_STEP_MS,
+  FishBehavior,
+  biteChancePerNibble,
+  environment,
+  fightProfile,
+  type BehaviorSignal,
+  type BehaviorState,
+  type DepthProvider,
+  type Stimulus,
+} from './behavior.ts';
 
 export interface BiteConfig {
   readonly approachMinMs: number;
@@ -164,6 +177,14 @@ export class FishBrain {
       bursting = true;
     }
     return fightPull(this.species, this.weightKg, bursting);
+  }
+
+  /** Peixe da sessão a partir do indivíduo do spawn: o peso é o do spawn e não muda mais. */
+  static fromIndividual(species: FishSpecies, individual: FishIndividual, plan: BitePlan, hookWindowMs: number): FishBrain {
+    if (individual.speciesId !== species.id) {
+      throw new RangeError(`indivíduo de ${individual.speciesId} não serve para a espécie ${species.id}`);
+    }
+    return new FishBrain(species, individual.weightKg, plan, hookWindowMs);
   }
 
   private goTo(next: FishPhase): void {

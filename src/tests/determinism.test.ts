@@ -3,6 +3,32 @@ import { Rng } from '../utils/rng.ts';
 import { pickSpecies, rollWeightKg } from '../fish/species.ts';
 import { planBite } from '../fish/fishBrain.ts';
 import { DEFAULT_CONFIG, deriveSeed, parseGameConfig } from '../config/gameConfig.ts';
+import { spawnIndividual } from '../progression/types.ts';
+import { environment, FishBehavior, type BehaviorSignal, type Stimulus } from '../fish/behavior.ts';
+
+const STIMULUS: Stimulus = {
+  env: environment(18, 'cloudy'),
+  lure: { lureId: 'worm', motion: 'slow', x: 1, z: 1, depthM: 1 },
+  playerDistanceM: 6,
+  playerMoving: false,
+};
+
+/** Roda a IA de um peixe em pedaços de tempo arbitrários; com `strike`, fisga ao fim do pedaço em que houver mordida. */
+function behaviorTrace(seed: number, chunksMs: readonly number[], strike = true): { signals: BehaviorSignal[]; weightKg: number; stamina: number } {
+  const rng = new Rng(seed);
+  const species = pickSpecies(rng);
+  const fish = new FishBehavior(species, spawnIndividual(rng, species), rng, { depthAt: () => 2 }, { x: 0, z: 0 });
+  const signals: BehaviorSignal[] = [];
+  let total = 0;
+  while (total < 40_000) {
+    for (const dt of chunksMs) {
+      total += dt;
+      signals.push(...fish.advance(dt, { ...STIMULUS, lineTension: 0.7 }));
+      if (strike) fish.hook();
+    }
+  }
+  return { signals, weightKg: fish.weightKg, stamina: fish.stamina };
+}
 
 function sequence(seed: number, count: number): [string, number, number | null][] {
   const rng = new Rng(seed);
@@ -21,6 +47,15 @@ describe('determinismo por seed', () => {
     const b = sequence(20261014, 50);
     expect(a).toEqual(b);
     expect(new Set(a.map(([id]) => id)).size).toBeGreaterThan(1);
+  });
+
+  it('a IA do peixe é determinística pela seed e pelo passo fixo de 20 ms', () => {
+    const a = behaviorTrace(20261014, [20]);
+    expect(a.signals.length).toBeGreaterThan(2);
+    expect(behaviorTrace(20261014, [20])).toEqual(a);
+    const free = behaviorTrace(20261014, [20], false);
+    expect(behaviorTrace(20261014, [7, 13, 33, 27], false)).toEqual(free);
+    expect(behaviorTrace(20261015, [20])).not.toEqual(a);
   });
 
   it('seeds diferentes produzem sequências diferentes', () => {

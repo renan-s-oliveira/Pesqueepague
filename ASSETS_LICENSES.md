@@ -8,10 +8,15 @@ Se o arquivo faltar, o jogo usa a versão procedural.
 
 | Asset | Tipo | Origem | Autor | Licença | URL |
 |---|---|---|---|---|---|
-| Terreno (bacia do lago, margem e montanhas) | Geometria procedural (`src/world/terrain.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Modelo dos peixes (corpo em loft com ossos, nadadeiras, olhos com íris e córnea, LOD de 2 níveis) | Geometria procedural (`src/fish/visual/fishModel.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Pele dos peixes (albedo com escamas e manchas por espécie, normal e rugosidade) | DataTexture procedural (`src/fish/visual/fishTextures.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Terreno (bacia do lago, margem irregular, morros ao fundo e montanhas) | Geometria procedural (`src/world/terrain.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Splat PBR do terreno (areia, terra, grama e pedra, rugosidade por camada) | Shader GLSL (`src/world/terrain.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Textura de detalhe do chão (`terrainDetail`: ondulação da areia, torrões, fissuras da pedra) | Textura procedural em canvas (`createTerrainDetailTexture`, `src/assets/textures.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
 | Água do lago (ondas, fresnel, reflexo do céu, ripples) | Shader GLSL (`src/world/lake.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
 | Céu com gradiente, sol e nuvens | Shader GLSL (`src/world/sky.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
-| Árvores, arbustos, rochas e flores | Geometria procedural instanciada (`src/world/vegetation.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Vegetação tropical: palmeiras, árvores de copa larga, arbustos, juncos, rochas, troncos caídos com raízes, folhas no chão e flores (LOD e balanço de vento no vertex shader) | Geometria procedural instanciada + shader GLSL (`src/world/vegetation.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Pássaros e insetos (animação procedural) | Geometria procedural instanciada (`src/world/fauna.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
 | Píer de madeira (tábuas e estacas) | Geometria procedural instanciada (`src/world/pier.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
 | Textura de madeira | Textura procedural em canvas (`src/assets/textures.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
 | Partículas ambientais (pólen/vaga-lumes) | Pontos procedurais (`src/world/particles.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |

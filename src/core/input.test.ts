@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canLook, isPlayState, mapInput } from './input.ts';
+import { ActionState, MAX_CAST_YAW, canLook, isPlayState, keyToAction, mapInput } from './input.ts';
 import { GAME_STATES } from './stateMachine.ts';
 
 const idle = { charging: false };
@@ -58,6 +58,41 @@ describe('mapInput', () => {
         expect(typeof mapInput(s, g, idle)).toBe('string');
       }
     }
+  });
+});
+
+describe('ActionState / keyToAction', () => {
+  it('drag sobe e desce em passos e fica em [0, 1]', () => {
+    const a = new ActionState();
+    expect(a.apply({ kind: 'drag', delta: 1 }).drag).toBeCloseTo(0.6);
+    for (let i = 0; i < 20; i++) a.apply({ kind: 'drag', delta: 1 });
+    expect(a.snapshot.drag).toBe(1);
+    for (let i = 0; i < 20; i++) a.apply({ kind: 'drag', delta: -1 });
+    expect(a.snapshot.drag).toBe(0);
+  });
+
+  it('recolher, velocidade, vara e direção do arremesso são limitados e ignoram valores inválidos', () => {
+    const a = new ActionState();
+    expect(a.apply({ kind: 'reel', active: true }).reeling).toBe(true);
+    expect(a.apply({ kind: 'reelSpeed', value: 2 }).reelSpeed).toBe(1);
+    expect(a.apply({ kind: 'reelSpeed', value: Number.NaN }).reelSpeed).toBe(1);
+    expect(a.apply({ kind: 'moveRod', x: -5, y: 0.5 })).toMatchObject({ rodX: -1, rodY: 0.5 });
+    expect(a.apply({ kind: 'castAim', yaw: 10 }).castYaw).toBe(MAX_CAST_YAW);
+    expect(a.apply({ kind: 'castAim', yaw: Number.POSITIVE_INFINITY }).castYaw).toBe(MAX_CAST_YAW);
+  });
+
+  it('teclado vira a mesma ação que gamepad ou toque usariam', () => {
+    const a = new ActionState();
+    expect(keyToAction('KeyR', true, a.snapshot)).toEqual({ kind: 'reel', active: true });
+    expect(keyToAction('KeyR', false, a.snapshot)).toEqual({ kind: 'reel', active: false });
+    expect(keyToAction('Equal', true, a.snapshot)).toEqual({ kind: 'drag', delta: 1 });
+    expect(keyToAction('Minus', true, a.snapshot)).toEqual({ kind: 'drag', delta: -1 });
+    expect(keyToAction('Digit3', true, a.snapshot)).toEqual({ kind: 'reelSpeed', value: 1 });
+    expect(keyToAction('ArrowLeft', true, a.snapshot)).toEqual({ kind: 'moveRod', x: -0.25, y: 0 });
+    const aim = keyToAction('KeyA', true, a.snapshot);
+    expect(aim?.kind).toBe('castAim');
+    expect(keyToAction('KeyZ', true, a.snapshot)).toBeNull();
+    expect(keyToAction('Equal', false, a.snapshot)).toBeNull();
   });
 });
 

@@ -1,7 +1,11 @@
 import type { GameState } from '../core/stateMachine.ts';
-import { QUALITY_LEVELS, type BestCatch, type Quality, type Settings } from '../config/persistence.ts';
-import { getSpecies } from '../fish/species.ts';
+import { installWeighingTestHooks } from '../capture/catchDecision.ts';
+import { defaultSaveData, QUALITY_LEVELS, type BestCatch, type Quality, type Settings, type Volumes } from '../config/persistence.ts';
+import { getSpecies, LURE_IDS, SPECIES, type LureId } from '../fish/species.ts';
 import type { JournalEntry } from '../gameplay/fishingSession.ts';
+import { evaluateAchievements } from '../progression/achievements.ts';
+import { achievementsContent, achievementsUnavailable } from './achievementsView.ts';
+import { GalleryView, LURE_LABELS, type GalleryDataSource } from './gallery.ts';
 
 export interface UIHandlers {
   readonly onPlay: () => void;
@@ -9,8 +13,18 @@ export interface UIHandlers {
   readonly onQuitToMenu: () => void;
   readonly onContinue: () => void;
   readonly onSettingsChange: (settings: Settings) => void;
+  /** Sliders de volume (geral, música e efeitos); ausente = a tela esconde nada, só não propaga. */
+  readonly onVolumesChange?: (volumes: Volumes) => void;
   readonly onResetSettings: () => void;
+  readonly onOpenTrophyRoom: () => void;
 }
+
+/** Cenários do menu: só o lago tropical existe; os outros aparecem desabilitados como 'em breve'. */
+const SCENARIOS = [
+  { id: 'lago-tropical', name: 'Lago Tropical', available: true },
+  { id: 'rio-da-serra', name: 'Rio da Serra', available: false },
+  { id: 'mar-aberto', name: 'Mar Aberto', available: false },
+] as const;
 
 export interface HudSnapshot {
   readonly state: GameState;
@@ -19,11 +33,26 @@ export interface HudSnapshot {
   readonly tension: number;
   /** 0..1: quanto da linha já foi recolhida. */
   readonly progress: number;
+  /** Direção do arremesso (rad); ausente = centrada. */
+  readonly castYaw?: number;
+  /** Dados da briga lidos da sessão; sem eles o painel mostra traços. */
+  readonly fight?: {
+    readonly distanceM: number | null;
+    readonly speedMps: number;
+    readonly dragN: number;
+    readonly stamina: number;
+  };
   readonly catches: number;
   readonly score: number;
 }
 
-const QUALITY_LABELS: Readonly<Record<Quality, string>> = { low: 'Baixa', medium: 'Média', high: 'Alta' };
+const QUALITY_LABELS: Readonly<Record<Quality, string>> = {
+  low: 'Baixa',
+  medium: 'Média',
+  high: 'Alta',
+  ultra: 'Ultra',
+  auto: 'Auto (ajusta pelo desempenho)',
+};
 
 const HINTS: Partial<Record<GameState, string>> = {
   IDLE: 'Segure o botão esquerdo (ou Espaço) para carregar e solte para arremessar.',
@@ -82,6 +111,9 @@ export class GameUI {
   private readonly panel = el('div', 'panel');
   private readonly hud = el('div', 'hud');
   private readonly power = meter('power-bar', 'Força do arremesso');
+  private readonly direction = meter('direction-bar', 'Direção do arremesso');
+  private readonly fight = el('div', 'fight-panel');
+  private readonly fightValues = new Map<string, HTMLElement>();
   private readonly tension = meter('tension-bar', 'Tensão da linha');
   private readonly progress = meter('reel-progress', 'Linha recolhida');
   private readonly biteAlert = el('div', 'bite-alert', 'Mordeu! Clique para fisgar');
@@ -93,6 +125,9 @@ export class GameUI {
   private readonly pausePanel = el('div', 'panel');
   private readonly crosshair = el('div', 'crosshair');
   private settings: Settings;
+  private volumes: Volumes;
+  private gallery: GalleryView | null = null;
+  private continueBtn: HTMLButtonElement | null = null;
   private journal: readonly JournalEntry[] = [];
   private best: BestCatch | null = null;
   private lastState: GameState | null = null;
@@ -103,8 +138,11 @@ export class GameUI {
     private readonly h: UIHandlers,
     settings: Settings,
     private readonly credits: string,
+    private readonly galleryData: GalleryDataSource | null = null,
+    volumes: Volumes = defaultSaveData().volumes,
   ) {
     this.settings = settings;
+    this.volumes = volumes;
     this.root.setAttribute('aria-live', 'off');
 
     this.loading.append(el('h1', 'title', 'FISHING PARADISE 3D'), this.loadingMeter.root, this.loadingText);
@@ -113,10 +151,17 @@ export class GameUI {
     const sub = el('p', 'subtitle', 'Um fim de tarde no pesque e pague');
     const nav = el('nav', 'menu-buttons');
     nav.setAttribute('aria-label', 'Menu principal');
+    this.continueBtn = button('Continuar', 'menu-continue', () => h.onPlay());
+    this.continueBtn.title = 'Volta ao lago com seu progresso salvo.';
     nav.append(
-      button('Jogar', 'menu-play', () => h.onPlay(), 'ui-btn primary'),
-      button('Como jogar', 'menu-help', () => this.openPanel(this.panel, this.helpContent(), this.menuMain)),
+      this.continueBtn,
+      button('Nova pescaria', 'menu-play', () => h.onPlay(), 'ui-btn primary'),
+      button('Selecionar cenário', 'menu-scenario', () => this.openPanel(this.panel, this.scenarioContent(), this.menuMain)),
+      button('Equipamentos', 'menu-equipment', () => this.openPanel(this.panel, this.equipmentContent(), this.menuMain)),
+      button('Galeria', 'menu-gallery', () => this.openGallery()),
+      button('Conquistas', 'menu-achievements', () => this.openAchievements()),
       button('Configurações', 'menu-settings', () => this.openPanel(this.panel, this.settingsContent(), this.menuMain)),
+      button('Como jogar', 'menu-help', () => this.openPanel(this.panel, this.helpContent(), this.menuMain)),
       button('Diário', 'menu-journal', () => this.openPanel(this.panel, this.journalContent(), this.menuMain)),
       button('Créditos', 'menu-credits', () => this.openPanel(this.panel, this.creditsContent(), this.menuMain)),
     );
@@ -133,7 +178,36 @@ export class GameUI {
     this.help.append(this.helpContent());
     this.help.hidden = true;
     this.crosshair.setAttribute('aria-hidden', 'true');
-    this.hud.append(this.crosshair, this.stats, this.power.root, this.tension.root, this.progress.root, this.biteAlert, this.hint, this.help);
+    this.fight.dataset['testid'] = 'fight-panel';
+    this.fight.setAttribute('role', 'group');
+    this.fight.setAttribute('aria-label', 'Briga com o peixe');
+    const rows = el('dl', 'fight-rows');
+    for (const [key, label] of [
+      ['distance', 'Distância'],
+      ['speed', 'Velocidade'],
+      ['drag', 'Drag'],
+      ['stamina', 'Fôlego do peixe'],
+    ] as const) {
+      const value = el('dd', 'fight-value', '—');
+      value.dataset['testid'] = `fight-${key}`;
+      this.fightValues.set(key, value);
+      rows.append(el('dt', '', label), value);
+    }
+    this.fight.append(rows);
+    this.fight.hidden = true;
+    this.direction.root.hidden = true;
+    this.hud.append(
+      this.crosshair,
+      this.stats,
+      this.power.root,
+      this.direction.root,
+      this.tension.root,
+      this.progress.root,
+      this.fight,
+      this.biteAlert,
+      this.hint,
+      this.help,
+    );
 
     this.result.setAttribute('role', 'dialog');
     this.result.setAttribute('aria-modal', 'true');
@@ -148,6 +222,8 @@ export class GameUI {
     this.root.append(this.loading, this.menu, this.hud, this.result, this.pause);
     container.appendChild(this.root);
     this.show(null);
+    // Só no build e2e: gancho __fp.openWeighing leva o teste direto à pesagem, sem pescar.
+    if (import.meta.env.MODE === 'e2e') installWeighingTestHooks(container);
   }
 
   setLoading(progress: number, text: string): void {
@@ -158,6 +234,17 @@ export class GameUI {
   setJournal(journal: readonly JournalEntry[], best: BestCatch | null): void {
     this.journal = journal;
     this.best = best;
+    this.updateContinue();
+  }
+
+  /** 'Continuar' só habilita quando existe progresso (sessão ou save) para retomar. */
+  private updateContinue(): void {
+    if (!this.continueBtn) return;
+    const hasProgress = this.journal.length > 0 || this.best !== null;
+    this.continueBtn.disabled = !hasProgress;
+    this.continueBtn.title = hasProgress
+      ? 'Volta ao lago com seu progresso salvo.'
+      : 'Nenhuma pescaria para continuar ainda. Comece por «Nova pescaria».';
   }
 
   setSettings(settings: Settings): void {
@@ -197,13 +284,18 @@ export class GameUI {
   update(s: HudSnapshot): void {
     if (s.state !== this.lastState) this.show(s.state);
     if (s.state === 'PAUSED' || s.state === 'MENU' || s.state === 'LOADING' || s.state === 'BOOT') return;
-    this.power.root.hidden = !(s.state === 'IDLE' && s.charging);
+    const charging = s.state === 'IDLE' && s.charging;
+    this.power.root.hidden = !charging;
     setMeter(this.power, s.chargePower);
+    this.direction.root.hidden = !charging;
+    setMeter(this.direction, 0.5 + Math.max(-1, Math.min(1, (s.castYaw ?? 0) / Math.PI)) / 2);
     this.tension.root.hidden = s.state !== 'REELING';
     this.tension.root.classList.toggle('danger', s.tension > 0.8);
     setMeter(this.tension, s.tension);
     this.progress.root.hidden = s.state !== 'REELING';
     setMeter(this.progress, s.progress);
+    this.fight.hidden = s.state !== 'REELING';
+    if (s.state === 'REELING') this.updateFight(s.fight);
     this.biteAlert.hidden = s.state !== 'HOOKED';
     const statsText = `Capturas: ${s.catches} · Pontos: ${s.score}`;
     if (statsText !== this.lastStats) {
@@ -214,6 +306,18 @@ export class GameUI {
 
   dispose(): void {
     this.root.remove();
+  }
+
+  private setFightValue(key: string, text: string): void {
+    const node = this.fightValues.get(key);
+    if (node && node.textContent !== text) node.textContent = text;
+  }
+
+  private updateFight(f: HudSnapshot['fight']): void {
+    this.setFightValue('distance', f && f.distanceM !== null ? `${f.distanceM.toFixed(1).replace('.', ',')} m` : '—');
+    this.setFightValue('speed', f ? `${f.speedMps.toFixed(1).replace('.', ',')} m/s` : '—');
+    this.setFightValue('drag', f ? `${Math.round(f.dragN)} N` : '—');
+    this.setFightValue('stamina', f ? `${Math.round(f.stamina * 100)}%` : '—');
   }
 
   private show(state: GameState | null): void {
@@ -227,6 +331,7 @@ export class GameUI {
     if (state === 'PAUSED') this.result.hidden = true;
     if (state === 'MENU') {
       this.closePanel(this.panel, this.menuMain);
+      this.updateContinue();
       this.menu.querySelector<HTMLButtonElement>('[data-testid="menu-play"]')?.focus();
     }
     if (state === 'PAUSED') {
@@ -260,9 +365,91 @@ export class GameUI {
   }
 
   private closePanel(panel: HTMLElement, main: HTMLElement): void {
+    this.gallery?.dispose();
+    this.gallery = null;
+    panel.classList.remove('wide');
     panel.hidden = true;
     panel.replaceChildren();
     main.hidden = false;
+  }
+
+  private openGallery(): void {
+    this.gallery?.dispose();
+    this.gallery = new GalleryView(this.galleryData, () => this.h.onOpenTrophyRoom());
+    this.openPanel(this.panel, this.gallery.root, this.menuMain);
+    this.panel.classList.add('wide');
+    void this.gallery.refresh();
+  }
+
+  private openAchievements(): void {
+    const box = el('div', 'achievements-box');
+    box.append(el('p', 'note', 'Carregando conquistas…'));
+    this.openPanel(this.panel, box, this.menuMain);
+    if (this.galleryData === null) {
+      box.replaceChildren(achievementsUnavailable('Conquistas indisponíveis neste navegador: o armazenamento local está bloqueado.'));
+      return;
+    }
+    void this.galleryData
+      .listCatches()
+      .then((records) => box.replaceChildren(achievementsContent(evaluateAchievements(records))))
+      .catch((error: unknown) => {
+        console.warn(`conquistas não carregaram: ${String(error)}`);
+        box.replaceChildren(achievementsUnavailable('Não foi possível carregar as conquistas. Feche e abra de novo para tentar outra vez.'));
+      });
+  }
+
+  /** Seleção de cenário: o lago tropical é o atual; os próximos aparecem desabilitados, sem promessa falsa de clique. */
+  private scenarioContent(): HTMLElement {
+    const box = el('div', 'scenarios');
+    box.dataset['testid'] = 'scenario-list';
+    box.append(el('h2', '', 'Selecionar cenário'));
+    for (const sc of SCENARIOS) {
+      if (sc.available) {
+        const b = button(`${sc.name} — cenário atual`, `scenario-${sc.id}`, () => this.closePanel(this.panel, this.menuMain));
+        b.setAttribute('aria-pressed', 'true');
+        b.classList.add('active');
+        box.append(b);
+      } else {
+        const b = el('button', 'ui-btn', `${sc.name} — em breve`);
+        b.type = 'button';
+        b.disabled = true;
+        b.dataset['testid'] = `scenario-${sc.id}`;
+        box.append(b);
+      }
+    }
+    box.append(el('p', 'note', 'Novos cenários chegam em atualizações futuras; seu progresso vale em todos.'));
+    return box;
+  }
+
+  /** Equipamentos: a isca escolhida vai para settings.lureId e muda o interesse de cada espécie. */
+  private equipmentContent(): HTMLElement {
+    const form = el('form', 'settings equipment');
+    form.addEventListener('submit', (e) => e.preventDefault());
+    form.append(el('h2', '', 'Equipamentos'));
+    const label = el('label', 'field', 'Isca');
+    const select = el('select');
+    select.dataset['testid'] = 'equipment-lure';
+    for (const id of LURE_IDS) {
+      const opt = el('option', '', LURE_LABELS[id]);
+      opt.value = id;
+      opt.selected = id === this.settings.lureId;
+      select.append(opt);
+    }
+    const prefNote = el('p', 'note');
+    prefNote.dataset['testid'] = 'equipment-preference';
+    const updateNote = (id: LureId): void => {
+      const fans = SPECIES.filter((s) => s.preferredLures.includes(id)).map((s) => s.name);
+      prefNote.textContent = fans.length > 0 ? `Preferida por: ${fans.join(', ')}.` : 'Nenhuma espécie deste lago prefere essa isca.';
+    };
+    updateNote(this.settings.lureId);
+    select.addEventListener('change', () => {
+      const id = (LURE_IDS as readonly string[]).includes(select.value) ? (select.value as LureId) : this.settings.lureId;
+      updateNote(id);
+      this.emitSettings({ ...this.settings, lureId: id });
+    });
+    label.append(select);
+    form.append(label, prefNote, el('p', 'note', 'A escolha vale na próxima mordida e fica salva neste navegador.'));
+    return form;
   }
 
   private helpContent(): HTMLElement {
@@ -274,7 +461,7 @@ export class GameUI {
       'Segure o botão esquerdo ou Espaço para carregar a força e solte para arremessar.',
       'Quando a boia afundar e aparecer “Mordeu!”, clique para fisgar.',
       'Segure para recolher a linha; solte quando a tensão ficar no vermelho para ela não arrebentar.',
-      'ESC pausa o jogo. H mostra ou esconde esta ajuda.',
+      'ESC pausa o jogo. H mostra ou esconde esta ajuda. F3 mostra o painel de diagnóstico.',
     ]) {
       list.append(el('li', '', line));
     }
@@ -327,12 +514,39 @@ export class GameUI {
     check.addEventListener('change', () => this.emitSettings({ ...this.settings, showHints: check.checked }));
     hLabel.prepend(check);
 
+    const audioTitle = el('h3', '', 'Áudio');
+    const master = this.volumeField('Volume geral', 'master');
+    const music = this.volumeField('Volume da música', 'music');
+    const sfxVol = this.volumeField('Volume dos efeitos', 'sfx');
+
     const reset = button('Restaurar padrões', 'settings-reset', () => {
       this.h.onResetSettings();
       form.replaceWith(this.settingsContent());
     });
-    form.append(qLabel, sLabel, hLabel, reset, el('p', 'note', 'As mudanças valem na hora e ficam salvas neste navegador.'));
+    form.append(qLabel, sLabel, hLabel, audioTitle, master, music, sfxVol, reset, el('p', 'note', 'As mudanças valem na hora e ficam salvas neste navegador.'));
     return form;
+  }
+
+  /** Slider 0..1 de um dos volumes; avisa o jogo na hora pelo onVolumesChange. */
+  private volumeField(label: string, key: keyof Volumes): HTMLElement {
+    const field = el('label', 'field', label);
+    const range = el('input');
+    range.type = 'range';
+    range.min = '0';
+    range.max = '1';
+    range.step = '0.05';
+    range.value = String(this.volumes[key]);
+    range.dataset['testid'] = `settings-volume-${key}`;
+    const out = el('output', '', `${Math.round(this.volumes[key] * 100)}%`);
+    range.addEventListener('input', () => {
+      const v = Number(range.value);
+      if (!Number.isFinite(v) || v < 0 || v > 1) return;
+      out.textContent = `${Math.round(v * 100)}%`;
+      this.volumes = { ...this.volumes, [key]: v };
+      this.h.onVolumesChange?.(this.volumes);
+    });
+    field.append(range, out);
+    return field;
   }
 
   private emitSettings(next: Settings): void {

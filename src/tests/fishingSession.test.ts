@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GameStateMachine } from '../core/stateMachine.ts';
 import { ManualClock } from '../utils/clock.ts';
 import { Rng } from '../utils/rng.ts';
-import { FishingSession, type JournalEntry } from '../gameplay/fishingSession.ts';
+import { FishingSession, type CaughtFish, type JournalEntry } from '../gameplay/fishingSession.ts';
 import { defaultSaveData, recordOutcome } from '../config/persistence.ts';
 
 const SEED = 20261014;
@@ -226,5 +226,90 @@ describe('FishingSession: bloqueios e reinício', () => {
     const machine = new GameStateMachine();
     expect(() => new FishingSession(machine, new Rng(1), new ManualClock(), { stepMs: 0 })).toThrow(RangeError);
     expect(() => new FishingSession(machine, new Rng(1), new ManualClock(), { species: [] })).toThrow(RangeError);
+  });
+});
+
+describe('FishingSession: controles e isca', () => {
+  it('setLure troca a isca registrada na captura e rejeita isca desconhecida', () => {
+    const s = setup();
+    expect(s.session.setLure('spinner')).toEqual({ ok: true });
+    expect(s.session.setLure('banana' as never).ok).toBe(false);
+    expect(s.session.lureId).toBe('spinner');
+    const caught: CaughtFish[] = [];
+    s.session.onCatch((fish) => caught.push(fish));
+    playCast(s);
+    expect(s.session.state).toBe('CAUGHT');
+    expect(caught[0]!.lureId).toBe('spinner');
+  });
+
+  it('o drag padrão é 60 N e com reelSpeed 0 recolher não puxa linha', () => {
+    const s = setup();
+    expect(s.session.dragN).toBe(60);
+    cast(s);
+    for (let i = 0; i < MAX_FRAMES && s.session.state !== 'REELING'; i++) {
+      if (s.session.state === 'HOOKED') s.session.hook();
+      s.frame();
+    }
+    expect(s.session.state).toBe('REELING');
+    const before = s.session.lineDistanceM;
+    s.session.setControls({ reelSpeed: 0, drag: 0.5, rodX: 0, rodY: 0, castYaw: 0 });
+    s.session.setReeling(true);
+    for (let i = 0; i < 100; i++) s.frame();
+    expect(s.session.lineDistanceM).toBe(before);
+    expect(s.session.state).toBe('REELING');
+  });
+
+  it('setControls limita às faixas e ignora valores não finitos', () => {
+    const s = setup();
+    s.session.setControls({ reelSpeed: Number.NaN, drag: 5, rodX: -3, rodY: 0.5, castYaw: 0.2 });
+    expect(s.session.controls).toEqual({ reelSpeed: 1, drag: 1, rodX: -1, rodY: 0.5, castYaw: 0.2 });
+    expect(s.session.dragN).toBe(120);
+  });
+});
+
+describe('FishingSession: captura e vara', () => {
+  it('o peso no evento de captura é o mesmo do indivíduo do spawn', () => {
+    const s = setup();
+    const caught: CaughtFish[] = [];
+    s.session.onCatch((fish) => caught.push(fish));
+    let spawnedWeight: number | null = null;
+    cast(s);
+    for (let i = 0; i < MAX_FRAMES; i++) {
+      const { state } = s.session;
+      if (state === 'CAUGHT' || state === 'ESCAPED') break;
+      if (state === 'HOOKED') {
+        spawnedWeight = s.session.currentIndividual?.weightKg ?? null;
+        s.session.hook();
+      }
+      if (state === 'REELING') s.session.setReeling(s.session.tension < 0.7);
+      s.frame();
+    }
+    expect(s.session.state).toBe('CAUGHT');
+    expect(caught).toHaveLength(1);
+    expect(spawnedWeight).not.toBeNull();
+    expect(caught[0]!.individual.weightKg).toBe(spawnedWeight);
+    expect(caught[0]!.individual.weightKg).toBe(s.session.journal.at(-1)!.weightKg);
+    expect(caught[0]!.lureId).toBe('worm');
+    expect(caught[0]!.hour).toBe(12);
+  });
+
+  it('a mordida mexe a ponta da vara e a briga a curva', () => {
+    const s = setup();
+    cast(s);
+    let maxWaitingBend = 0;
+    let maxFightBend = 0;
+    for (let i = 0; i < MAX_FRAMES; i++) {
+      const { state } = s.session;
+      if (state === 'CAUGHT' || state === 'ESCAPED') break;
+      if (state === 'WAITING' || state === 'HOOKED') maxWaitingBend = Math.max(maxWaitingBend, s.session.rodBendRad);
+      if (state === 'HOOKED') s.session.hook();
+      if (state === 'REELING') {
+        s.session.setReeling(s.session.tension < 0.7);
+        maxFightBend = Math.max(maxFightBend, s.session.rodBendRad);
+      }
+      s.frame();
+    }
+    expect(maxWaitingBend).toBeGreaterThan(0);
+    expect(maxFightBend).toBeGreaterThan(maxWaitingBend);
   });
 });

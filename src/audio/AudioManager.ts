@@ -27,7 +27,69 @@ export interface AudioManagerOptions {
 export type AudioState = 'locked' | 'running' | 'suspended' | 'disposed';
 
 const UNLOCK_EVENTS = ['pointerdown', 'keydown', 'touchend'] as const;
-const AMBIENCE_IDS: readonly LoopId[] = ['forest', 'water', 'birds'];
+
+/** Camadas do ambiente (tudo que não é música de menu). */
+const AMBIENT_IDS: readonly LoopId[] = ['forest', 'water', 'waves', 'wind', 'birds', 'insects', 'rain'];
+
+/** Posição de cada camada em volta do pescador (x, y, z em metros); chuva e vento ficam por cima. */
+const LOOP_POSITIONS: Partial<Record<LoopId, readonly [number, number, number]>> = {
+  water: [0, -0.5, 4],
+  waves: [6, -0.5, 8],
+  forest: [-8, 2, -6],
+  wind: [0, 8, 0],
+  birds: [7, 6, -5],
+  insects: [-5, 0, 3],
+  rain: [0, 10, 2],
+};
+
+/** Ambiente sonoro: hora vinda do TimeOfDay, chuva e vento vindos de src/world/weather.ts. */
+export interface AmbienceEnvironment {
+  /** Hora do dia em 0..24 (fração vale). */
+  readonly hour: number;
+  /** 0..1, de Weather.rainIntensity. */
+  readonly rainIntensity: number;
+  /** m/s, de Weather.getWind().speed. */
+  readonly windSpeed: number;
+}
+
+/** Fim de tarde limpo, o padrão do lago antes do primeiro setEnvironment. */
+export const DEFAULT_ENVIRONMENT: AmbienceEnvironment = { hour: 17, rainIntensity: 0, windSpeed: 1.5 };
+
+function validateEnvironment(env: AmbienceEnvironment): AmbienceEnvironment {
+  for (const key of ['hour', 'rainIntensity', 'windSpeed'] as const) {
+    const value: unknown = env[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new RangeError(`ambiente ${key} deve ser um número finito; recebido: ${String(value)}`);
+    }
+  }
+  return {
+    hour: env.hour,
+    rainIntensity: Math.min(1, Math.max(0, env.rainIntensity)),
+    windSpeed: Math.max(0, env.windSpeed),
+  };
+}
+
+/**
+ * Camadas ativas do ambiente e o nível (0..1) de cada uma: água sempre; ondas, vento e folhas
+ * crescem com o vento; pássaros só de dia e insetos só à noite (ambos somem na chuva forte);
+ * chuva só quando está chovendo.
+ */
+export function ambienceLoopsFor(environment: AmbienceEnvironment): ReadonlyMap<LoopId, number> {
+  const env = validateEnvironment(environment);
+  const hour = ((env.hour % 24) + 24) % 24;
+  const wind = Math.min(1, env.windSpeed / 8);
+  const rain = env.rainIntensity;
+  const isDay = hour >= 6 && hour < 18.5;
+  const layers = new Map<LoopId, number>();
+  layers.set('water', 1);
+  layers.set('waves', 0.3 + 0.7 * wind);
+  layers.set('wind', 0.2 + 0.8 * wind);
+  layers.set('forest', 0.35 + 0.65 * wind);
+  if (isDay && rain < 0.6) layers.set('birds', 1 - rain);
+  if (!isDay && rain < 0.6) layers.set('insects', 1 - rain);
+  if (rain > 0.02) layers.set('rain', 0.3 + 0.7 * rain);
+  return layers;
+}
 const MAX_SFX_VOICES = 12;
 const LOOP_FADE_IN_SECONDS = 1.5;
 const LOOP_FADE_OUT_SECONDS = 0.6;
@@ -37,6 +99,7 @@ const DEFAULT_SEED = 0x5eed;
 interface Voice {
   readonly source: AudioBufferSourceNode;
   readonly gain: GainNode;
+  readonly panner: PannerNode | null;
 }
 
 interface Buses {
@@ -74,11 +137,14 @@ export class AudioManager {
   private volumes: Volumes;
   private ctx: AudioContext | null = null;
   private buses: Buses | null = null;
-  private readonly buffers = new Map<SoundId, AudioBuffer>();
+  private readonly buffers = new Map<string, AudioBuffer>();
   private readonly wantedLoops = new Set<LoopId>();
   private readonly loops = new Map<LoopId, Voice>();
+  private readonly loopLevels = new Map<LoopId, number>();
   private readonly sfxVoices = new Set<Voice>();
   private readonly fadingVoices = new Set<Voice>();
+  private ambienceOn = false;
+  private environment: AmbienceEnvironment = DEFAULT_ENVIRONMENT;
   private gestureTarget: EventTarget | null = null;
   private hasRun = false;
   private disposed = false;
@@ -134,7 +200,9 @@ export class AudioManager {
     if (!isSfxId(id)) throw new RangeError(`efeito sonoro desconhecido: ${String(id)}`);
     if (!this.isRunning() || this.buses === null) return false;
     if (this.sfxVoices.size >= MAX_SFX_VOICES) return false;
-    const voice = this.createVoice(id, this.buses.sfx, SOUND_SPECS[id].gain);
+    const spec = SOUND_SPECS[id];
+    const variant = spec.variants > 1 ? this.rng.int(0, spec.variants - 1) : 0;
+    const voice = this.createVoice(id, this.buses.sfx, spec.gain, variant, null);
     voice.source.playbackRate.value = this.rng.range(0.96, 1.04);
     voice.source.onended = () => {
       this.sfxVoices.delete(voice);
@@ -159,12 +227,21 @@ export class AudioManager {
     this.syncLoops();
   }
 
-  /** Ambiente do lago: floresta e vento, água e pássaros. */
+  /** Ambiente do lago em camadas; quais tocam e em que nível depende do ambiente atual. */
   setAmbience(on: boolean): void {
-    for (const id of AMBIENCE_IDS) {
-      if (on) this.startLoop(id);
-      else this.stopLoop(id);
-    }
+    if (this.disposed) return;
+    this.ambienceOn = on;
+    this.applyAmbience();
+  }
+
+  /** Atualiza hora, chuva e vento; camadas e níveis seguem na hora, com rampa suave. */
+  setEnvironment(environment: AmbienceEnvironment): void {
+    this.environment = validateEnvironment(environment);
+    if (this.ambienceOn) this.applyAmbience();
+  }
+
+  get currentEnvironment(): AmbienceEnvironment {
+    return this.environment;
   }
 
   setMenuMusic(on: boolean): void {
@@ -194,7 +271,9 @@ export class AudioManager {
     this.disposed = true;
     this.removeGestureListeners();
     this.gestureTarget = null;
+    this.ambienceOn = false;
     this.wantedLoops.clear();
+    this.loopLevels.clear();
     const voices = [...this.loops.values(), ...this.sfxVoices, ...this.fadingVoices];
     this.loops.clear();
     this.sfxVoices.clear();
@@ -284,13 +363,41 @@ export class AudioManager {
     }
   }
 
+  private applyAmbience(): void {
+    const plan = this.ambienceOn ? ambienceLoopsFor(this.environment) : new Map<LoopId, number>();
+    for (const id of AMBIENT_IDS) {
+      const level = plan.get(id);
+      if (level === undefined) {
+        this.wantedLoops.delete(id);
+        this.loopLevels.delete(id);
+      } else {
+        this.wantedLoops.add(id);
+        this.loopLevels.set(id, level);
+      }
+    }
+    this.applyLoopLevels();
+    this.syncLoops();
+  }
+
+  /** Rampa o ganho das camadas que já tocam para o nível novo. */
+  private applyLoopLevels(): void {
+    if (!this.isRunning()) return;
+    const now = this.requireContext().currentTime;
+    for (const [id, voice] of this.loops) {
+      voice.gain.gain.setTargetAtTime(SOUND_SPECS[id].gain * (this.loopLevels.get(id) ?? 1), now, 0.5);
+    }
+  }
+
   private startLoopVoice(id: LoopId, bus: GainNode): Voice {
     const ctx = this.requireContext();
-    const voice = this.createVoice(id, bus, 0);
+    const voice = this.createVoice(id, bus, 0, 0, LOOP_POSITIONS[id] ?? null);
     voice.source.loop = true;
     const now = ctx.currentTime;
     voice.gain.gain.setValueAtTime(0, now);
-    voice.gain.gain.linearRampToValueAtTime(SOUND_SPECS[id].gain, now + LOOP_FADE_IN_SECONDS);
+    voice.gain.gain.linearRampToValueAtTime(
+      SOUND_SPECS[id].gain * (this.loopLevels.get(id) ?? 1),
+      now + LOOP_FADE_IN_SECONDS,
+    );
     voice.source.start(now);
     return voice;
   }
@@ -309,28 +416,65 @@ export class AudioManager {
     voice.source.stop(end);
   }
 
-  private createVoice(id: SoundId, bus: GainNode, level: number): Voice {
+  private createVoice(
+    id: SoundId,
+    bus: GainNode,
+    level: number,
+    variant: number,
+    position: readonly [number, number, number] | null,
+  ): Voice {
     const ctx = this.requireContext();
     const source = ctx.createBufferSource();
-    source.buffer = this.getBuffer(ctx, id);
+    source.buffer = this.getBuffer(ctx, id, variant);
     const gain = ctx.createGain();
     gain.gain.value = level;
     source.connect(gain);
-    gain.connect(bus);
-    return { source, gain };
+    let panner: PannerNode | null = null;
+    if (position !== null) {
+      panner = this.createPanner(position);
+      gain.connect(panner);
+      panner.connect(bus);
+    } else {
+      gain.connect(bus);
+    }
+    return { source, gain, panner };
+  }
+
+  /** Panner barato (equalpower, atenuação linear) na posição fixa da camada. */
+  private createPanner([x, y, z]: readonly [number, number, number]): PannerNode {
+    const panner = this.requireContext().createPanner();
+    panner.panningModel = 'equalpower';
+    panner.distanceModel = 'linear';
+    panner.refDistance = 1;
+    panner.maxDistance = 60;
+    panner.rolloffFactor = 0.8;
+    const px: AudioParam | undefined = panner.positionX;
+    const py: AudioParam | undefined = panner.positionY;
+    const pz: AudioParam | undefined = panner.positionZ;
+    if (px !== undefined && py !== undefined && pz !== undefined) {
+      px.value = x;
+      py.value = y;
+      pz.value = z;
+    } else {
+      panner.setPosition(x, y, z);
+    }
+    return panner;
   }
 
   private releaseVoice(voice: Voice): void {
     voice.source.disconnect();
     voice.gain.disconnect();
+    voice.panner?.disconnect();
   }
 
-  private getBuffer(ctx: AudioContext, id: SoundId): AudioBuffer {
-    const cached = this.buffers.get(id);
+  private getBuffer(ctx: AudioContext, id: SoundId, variant: number): AudioBuffer {
+    const key = `${id}#${variant}`;
+    const cached = this.buffers.get(key);
     if (cached !== undefined) return cached;
     const buffer = ctx.createBuffer(1, soundLength(id, ctx.sampleRate), ctx.sampleRate);
-    renderSound(id, buffer.getChannelData(0), ctx.sampleRate, (this.seed + SOUND_IDS.indexOf(id)) >>> 0);
-    this.buffers.set(id, buffer);
+    const seed = (this.seed + SOUND_IDS.indexOf(id) * 7919 + variant * 104729) >>> 0;
+    renderSound(id, buffer.getChannelData(0), ctx.sampleRate, seed);
+    this.buffers.set(key, buffer);
     return buffer;
   }
 

@@ -35,10 +35,11 @@ describe('wireGameAudio', () => {
       'sfx:bite',
       'sfx:line',
       'sfx:catch',
+      'sfx:weigh',
     ]);
     off();
     states.dispatch({ type: 'QUIT' });
-    expect(log).toHaveLength(9);
+    expect(log).toHaveLength(10);
   });
 
   it('suspende na pausa e retoma sem repetir o efeito do estado anterior', () => {

@@ -1,4 +1,5 @@
-import { ACESFilmicToneMapping, PCFSoftShadowMap, SRGBColorSpace, WebGLRenderer, type PerspectiveCamera } from 'three';
+import { ACESFilmicToneMapping, PCFSoftShadowMap, SRGBColorSpace, WebGLRenderer, type PerspectiveCamera, type Scene } from 'three';
+import { CALIBRATED_EXPOSURE, PostProcessingPipeline, type PostProcessingSettings } from './postprocessing.ts';
 
 export interface EngineRendererOptions {
   readonly maxPixelRatio: number;
@@ -9,13 +10,14 @@ export type FrameCallback = (deltaSeconds: number, elapsedSeconds: number, frame
 /** Passo máximo da simulação: evita salto grande quando a aba volta ou o frame trava. */
 const MAX_DELTA_SECONDS = 0.1;
 
-/** Renderer WebGL2 com ACES, saída sRGB, pixel ratio controlado e loop pausado com a aba oculta. */
+/** Renderer WebGL2 com ACES, saída sRGB, pós-processamento, pixel ratio controlado e loop pausado com a aba oculta. */
 export class EngineRenderer {
   readonly renderer: WebGLRenderer;
   private readonly container: HTMLElement;
   private readonly camera: PerspectiveCamera;
   private readonly maxPixelRatio: number;
   private pixelRatioScale = 1;
+  private pipeline: PostProcessingPipeline | null = null;
   private onFrame: FrameCallback | null = null;
   private running = false;
   private lastTime = -1;
@@ -42,7 +44,9 @@ export class EngineRenderer {
     const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.toneMapping = ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1;
+    renderer.toneMappingExposure = CALIBRATED_EXPOSURE;
+    // O composer desenha vários passes por frame: o diagnóstico zera o renderer.info no início do frame.
+    renderer.info.autoReset = false;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFSoftShadowMap;
     this.renderer = renderer;
@@ -69,6 +73,29 @@ export class EngineRenderer {
     this.resize();
   }
 
+  /** Liga a cadeia de pós-processamento para a cena; sem isto render() desenha direto no canvas. */
+  attachScene(scene: Scene, settings: PostProcessingSettings): void {
+    this.pipeline?.dispose();
+    this.pipeline = new PostProcessingPipeline(this.renderer, scene, this.camera);
+    this.pipeline.configure(settings);
+    this.applyPixelRatio();
+    this.resize();
+  }
+
+  configurePostProcessing(settings: PostProcessingSettings): void {
+    if (!this.pipeline) throw new Error('chame attachScene() antes de configurar o pós-processamento');
+    this.pipeline.configure(settings);
+  }
+
+  get postProcessing(): PostProcessingPipeline | null {
+    return this.pipeline;
+  }
+
+  render(scene: Scene, deltaSeconds: number): void {
+    if (this.pipeline) this.pipeline.render(deltaSeconds);
+    else this.renderer.render(scene, this.camera);
+  }
+
   start(onFrame: FrameCallback): void {
     this.onFrame = onFrame;
     this.running = true;
@@ -85,6 +112,8 @@ export class EngineRenderer {
     this.onFrame = null;
     window.removeEventListener('resize', this.handleResize);
     document.removeEventListener('visibilitychange', this.handleVisibility);
+    this.pipeline?.dispose();
+    this.pipeline = null;
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
@@ -100,13 +129,16 @@ export class EngineRenderer {
 
   private applyPixelRatio(): void {
     const device = Math.min(window.devicePixelRatio || 1, this.maxPixelRatio);
-    this.renderer.setPixelRatio(Math.max(0.5, device * this.pixelRatioScale));
+    const ratio = Math.max(0.5, device * this.pixelRatioScale);
+    this.renderer.setPixelRatio(ratio);
+    this.pipeline?.setPixelRatio(ratio);
   }
 
   private resize(): void {
     const width = Math.max(1, this.container.clientWidth);
     const height = Math.max(1, this.container.clientHeight);
     this.renderer.setSize(width, height);
+    this.pipeline?.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
   }

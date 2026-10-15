@@ -10,9 +10,28 @@ function render(id: (typeof SOUND_IDS)[number], seed: number): Float32Array {
 }
 
 describe('síntese procedural', () => {
-  it('tem um gerador para cada um dos 10 sons pedidos', () => {
+  it('tem um gerador para cada um dos 18 sons pedidos', () => {
     expect([...SOUND_IDS].sort()).toEqual(
-      ['forest', 'water', 'birds', 'cast', 'splash', 'line', 'bite', 'catch', 'fail', 'menuMusic'].sort(),
+      [
+        'forest',
+        'water',
+        'waves',
+        'wind',
+        'birds',
+        'insects',
+        'rain',
+        'cast',
+        'splash',
+        'line',
+        'bite',
+        'catch',
+        'fail',
+        'tension',
+        'jump',
+        'weigh',
+        'achievement',
+        'menuMusic',
+      ].sort(),
     );
     for (const id of SOUND_IDS) expect(typeof SOUND_SPECS[id].generate).toBe('function');
   });

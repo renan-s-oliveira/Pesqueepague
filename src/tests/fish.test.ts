@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { Rng } from '../utils/rng.ts';
 import {
   computePoints,
+  expectedWeightKg,
   fightPull,
+  individualRarity,
+  lengthForWeightCm,
+  RARITY_SCORE_MULTIPLIER,
   getSpecies,
   hookWindowMs,
   pickSpecies,
@@ -13,6 +17,7 @@ import {
   type FishSpecies,
 } from '../fish/species.ts';
 import { biteProbability, DEFAULT_BITE_CONFIG, FishBrain, planBite, type BitePlan } from '../fish/fishBrain.ts';
+import { spawnIndividual } from '../progression/types.ts';
 
 const lambari = getSpecies('lambari');
 const tilapia = getSpecies('tilapia');
@@ -29,6 +34,45 @@ describe('espécies', () => {
     expect(() => validateSpeciesTable([lambari, lambari])).toThrow(RangeError);
     expect(() => validateSpeciesTable([{ ...lambari, difficulty: 2 }])).toThrow(RangeError);
     expect(() => validateSpeciesTable([])).toThrow(RangeError);
+    expect(() => validateSpeciesTable([{ ...lambari, lengthWeight: { a: 0, b: 3 } }])).toThrow(RangeError);
+    expect(() => validateSpeciesTable([{ ...lambari, depthRangeM: { min: 3, max: 1 } }])).toThrow(RangeError);
+    expect(() => validateSpeciesTable([{ ...lambari, preferredLures: [] }])).toThrow(RangeError);
+    const legendarySpecies = { ...lambari, rarity: 'legendary' } as unknown as FishSpecies;
+    expect(() => validateSpeciesTable([legendarySpecies])).toThrow(RangeError);
+    const badColor = { ...lambari.visual, palette: { ...lambari.visual.palette, flank: 'azul' } };
+    expect(() => validateSpeciesTable([{ ...lambari, visual: badColor }])).toThrow(RangeError);
+  });
+
+  it('traz nome científico, conservação e dados de biologia', () => {
+    expect(SPECIES.map((s) => s.scientificName)).toEqual([
+      'Astyanax lacustris',
+      'Oreochromis niloticus',
+      'Cichla ocellaris',
+    ]);
+    expect(tucunare.conservationStatus).toBe('protected');
+    expect(lambari.conservationStatus).toBe('least_concern');
+    for (const s of SPECIES) {
+      expect(s.curiosities.length).toBeGreaterThan(0);
+      expect(s.preferredLures.length).toBeGreaterThan(0);
+      expect(s.depthRangeM.max).toBeGreaterThanOrEqual(s.depthRangeM.min);
+      expect(s.preferredTempC.max).toBeGreaterThanOrEqual(s.preferredTempC.min);
+    }
+  });
+
+  it('a faixa de peso corresponde a comprimentos plausíveis por W = a·L^b', () => {
+    for (const s of SPECIES) {
+      const minL = lengthForWeightCm(s, s.minWeightKg);
+      const maxL = lengthForWeightCm(s, s.maxWeightKg);
+      expect(minL).toBeGreaterThan(3);
+      expect(maxL).toBeLessThan(90);
+      expect(expectedWeightKg(s, maxL)).toBeCloseTo(s.maxWeightKg, 6);
+    }
+  });
+
+  it("'legendary' vale para o topo de peso e pontua mais", () => {
+    expect(individualRarity(tilapia, tilapia.maxWeightKg)).toBe('legendary');
+    expect(individualRarity(tilapia, tilapia.minWeightKg)).toBe('uncommon');
+    expect(RARITY_SCORE_MULTIPLIER.legendary).toBeGreaterThan(RARITY_SCORE_MULTIPLIER.rare);
   });
 
   it('sorteia pela probabilidade configurada', () => {
@@ -138,6 +182,16 @@ describe('máquina de estados do peixe', () => {
       { type: 'escape', reason: 'lost_interest', atMs: 800 },
     ]);
     expect(fish.escapeReason).toBe('lost_interest');
+  });
+
+  it('o peixe criado do indivíduo do spawn chega à luta com o mesmo peso', () => {
+    const individual = spawnIndividual(new Rng(31), tilapia);
+    const fish = FishBrain.fromIndividual(tilapia, individual, plan, 500);
+    fish.advance(2000);
+    expect(fish.hook()).toBe(true);
+    expect(fish.phase).toBe('fight');
+    expect(fish.weightKg).toBe(individual.weightKg);
+    expect(() => FishBrain.fromIndividual(lambari, individual, plan, 500)).toThrow(RangeError);
   });
 
   it('fora da luta não puxa linha', () => {

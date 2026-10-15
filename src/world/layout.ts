@@ -6,6 +6,12 @@ export const LAKE = {
   waterLevel: 0,
 } as const;
 
+/** Leito do lago: mais fundo no centro, sobe até a margem em `rimRadius`. Nunca abaixo da bacia do terreno. */
+export const LAKE_BED = {
+  maxDepth: 2.9,
+  rimRadius: LAKE.radius * 1.3,
+} as const;
+
 export const PIER = {
   x: 0,
   zShore: 42,

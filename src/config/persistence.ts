@@ -1,21 +1,29 @@
-import { computePoints, getSpecies, isSpeciesId, type SpeciesId } from '../fish/species.ts';
+import { computePoints, getSpecies, isSpeciesId, LURE_IDS, type LureId, type SpeciesId } from '../fish/species.ts';
 
 /**
  * Persistência local com schema versionado. Nada de dado pessoal: só preferências e números de jogo.
  * v1 (legado): { version: 1, volume, bestSpecies?, bestWeightKg?, totalCatches? }.
- * v2 (atual): SaveData abaixo.
+ * v2 (atual): SaveData abaixo. A qualidade aceita 'ultra' e 'auto' desde a entrada dos presets novos; como só
+ * a faixa de valores cresceu (expandir sem contrair), o save v2 antigo continua válido sem migração.
+ * settings.lureId entrou depois pelo mesmo princípio: save antigo sem o campo ganha o padrão, sem perda de dados.
  */
 export const SAVE_KEY = 'pesqueepague.save';
 export const SAVE_VERSION = 2;
 const MAX_SAVE_CHARS = 64 * 1024;
 
-export const QUALITY_LEVELS = ['low', 'medium', 'high'] as const;
+export const QUALITY_LEVELS = ['low', 'medium', 'high', 'ultra', 'auto'] as const;
 export type Quality = (typeof QUALITY_LEVELS)[number];
 
 export interface Settings {
   readonly quality: Quality;
   readonly showHints: boolean;
   readonly cameraSensitivity: number;
+  /** Isca escolhida pelo jogador; usada pela sessão de pesca. */
+  readonly lureId: LureId;
+}
+
+function isLureId(value: unknown): value is LureId {
+  return typeof value === 'string' && (LURE_IDS as readonly string[]).includes(value);
 }
 
 export interface Volumes {
@@ -63,7 +71,7 @@ export interface KeyValueStore {
 export function defaultSaveData(): SaveData {
   return {
     version: SAVE_VERSION,
-    settings: { quality: 'medium', showHints: true, cameraSensitivity: 1 },
+    settings: { quality: 'medium', showHints: true, cameraSensitivity: 1, lureId: 'worm' },
     volumes: { master: 0.8, music: 0.6, sfx: 0.8 },
     bestCatch: null,
     stats: { catches: 0, escapes: 0, totalPoints: 0, totalWeightKg: 0 },
@@ -147,12 +155,20 @@ function parseV2(raw: Raw): LoadResult {
   } else if (quality !== undefined) {
     r.issues.push('settings.quality inválido');
   }
+  const lure = s['lureId'];
+  let parsedLure: LureId = d.settings.lureId;
+  if (isLureId(lure)) {
+    parsedLure = lure;
+  } else if (lure !== undefined) {
+    r.issues.push('settings.lureId inválido');
+  }
   const data: SaveData = {
     version: SAVE_VERSION,
     settings: {
       quality: parsedQuality,
       showHints: r.boolean(s, 'showHints', 'settings.showHints', d.settings.showHints),
       cameraSensitivity: r.number(s, 'cameraSensitivity', 'settings.cameraSensitivity', 0.1, 3, d.settings.cameraSensitivity),
+      lureId: parsedLure,
     },
     volumes: {
       master: r.number(v, 'master', 'volumes.master', 0, 1, d.volumes.master),

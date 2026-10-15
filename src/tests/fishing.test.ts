@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { castPower, computeCast, DEFAULT_CAST_CONFIG, trajectoryAt, validateCastConfig } from '../fishing/cast.ts';
-import { DEFAULT_REEL_CONFIG, ReelLine, validateReelConfig } from '../fishing/reel.ts';
+import { DEFAULT_REEL_CONFIG, DragReel, ReelLine, validateReelConfig } from '../fishing/reel.ts';
+import { LINE_SPECS, VerletLine } from '../fishing/linePhysics.ts';
+import { RodPhysics } from '../fishing/rodPhysics.ts';
 
 describe('potência do arremesso', () => {
   it('cresce linearmente com o tempo segurado e satura em 1', () => {
@@ -38,6 +40,42 @@ describe('potência do arremesso', () => {
   it('valida a configuração', () => {
     expect(() => validateCastConfig({ ...DEFAULT_CAST_CONFIG, gravity: 0 })).toThrow(RangeError);
     expect(() => validateCastConfig({ ...DEFAULT_CAST_CONFIG, launchAngleRad: Math.PI })).toThrow(RangeError);
+  });
+});
+
+describe('vara, linha e molinete juntos', () => {
+  const frameMs = 1000 / 60;
+
+  it('a tensão do molinete curva a vara e, com a linha rompida, a vara volta ao repouso', () => {
+    const reel = new DragReel(LINE_SPECS.mono020, 30, 100);
+    const rod = new RodPhysics();
+    let maxBend = 0;
+    for (let i = 0; i < 180 && reel.status === 'ok'; i++) {
+      reel.update(frameMs, { retrieve: 0.5, fishSpeedMps: 3 });
+      rod.setLineTension(reel.tensionN);
+      rod.update(frameMs);
+      maxBend = Math.max(maxBend, rod.bendRad);
+    }
+    expect(reel.status).toBe('snapped');
+    expect(maxBend).toBeGreaterThan(0);
+    for (let i = 0; i < 360; i++) {
+      rod.setLineTension(reel.tensionN);
+      rod.update(frameMs);
+    }
+    expect(rod.isAtRest()).toBe(true);
+  });
+
+  it('a linha Verlet acompanha o comprimento solto pelo molinete', () => {
+    const reel = new DragReel(LINE_SPECS.mono030, 10, 20);
+    const line = new VerletLine(LINE_SPECS.mono030, reel.lineOutM, { x: 0, y: 2, z: 0 }, { x: 9, y: 0, z: 0 });
+    for (let i = 0; i < 60; i++) {
+      reel.update(frameMs, { retrieve: 1, fishSpeedMps: -1.2 });
+      line.setLength(reel.lineOutM);
+      line.update(frameMs);
+    }
+    expect(line.lengthM).toBeCloseTo(reel.lineOutM, 9);
+    expect(line.tensionN).toBeGreaterThan(0);
+    expect(line.broken).toBe(false);
   });
 });
 

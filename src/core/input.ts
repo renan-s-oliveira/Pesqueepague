@@ -69,6 +69,99 @@ export function mapInput(state: GameState, gesture: InputGesture, ctx: InputCont
   return 'none';
 }
 
+/**
+ * Camada de ações independente de dispositivo. Teclado, mouse, gamepad e toque traduzem
+ * seus sinais para estas ações; a sessão de pesca só lê o ActionState.
+ */
+export type PlayerAction =
+  | { readonly kind: 'reel'; readonly active: boolean }
+  | { readonly kind: 'reelSpeed'; readonly value: number }
+  | { readonly kind: 'drag'; readonly delta: 1 | -1 }
+  | { readonly kind: 'moveRod'; readonly x: number; readonly y: number }
+  | { readonly kind: 'castAim'; readonly yaw: number };
+
+export interface ActionSnapshot {
+  readonly reeling: boolean;
+  /** Velocidade de recolhimento em [0, 1]. */
+  readonly reelSpeed: number;
+  /** Drag do molinete em [0, 1]. */
+  readonly drag: number;
+  /** Posição da vara em [-1, 1] nos dois eixos. */
+  readonly rodX: number;
+  readonly rodY: number;
+  /** Direção do arremesso em radianos, relativa à frente do jogador, em [-MAX_CAST_YAW, MAX_CAST_YAW]. */
+  readonly castYaw: number;
+}
+
+export const DRAG_STEP = 0.1;
+export const MAX_CAST_YAW = Math.PI / 4;
+
+const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+
+/** Estado acumulado das ações. Valores não finitos são ignorados. */
+export class ActionState {
+  private s: ActionSnapshot = { reeling: false, reelSpeed: 1, drag: 0.5, rodX: 0, rodY: 0, castYaw: 0 };
+
+  get snapshot(): ActionSnapshot {
+    return this.s;
+  }
+
+  apply(action: PlayerAction): ActionSnapshot {
+    switch (action.kind) {
+      case 'reel':
+        this.s = { ...this.s, reeling: action.active };
+        break;
+      case 'reelSpeed':
+        if (Number.isFinite(action.value)) this.s = { ...this.s, reelSpeed: clamp(action.value, 0, 1) };
+        break;
+      case 'drag':
+        this.s = { ...this.s, drag: Math.round(clamp(this.s.drag + action.delta * DRAG_STEP, 0, 1) * 100) / 100 };
+        break;
+      case 'moveRod':
+        if (Number.isFinite(action.x) && Number.isFinite(action.y)) {
+          this.s = { ...this.s, rodX: clamp(action.x, -1, 1), rodY: clamp(action.y, -1, 1) };
+        }
+        break;
+      case 'castAim':
+        if (Number.isFinite(action.yaw)) this.s = { ...this.s, castYaw: clamp(action.yaw, -MAX_CAST_YAW, MAX_CAST_YAW) };
+        break;
+    }
+    return this.s;
+  }
+}
+
+/** Teclado → ação. Gamepad e toque terão seus próprios mapeadores para o mesmo PlayerAction. */
+export function keyToAction(code: string, down: boolean, current: ActionSnapshot): PlayerAction | null {
+  switch (code) {
+    case 'KeyR':
+      return { kind: 'reel', active: down };
+    case 'Equal':
+    case 'NumpadAdd':
+      return down ? { kind: 'drag', delta: 1 } : null;
+    case 'Minus':
+    case 'NumpadSubtract':
+      return down ? { kind: 'drag', delta: -1 } : null;
+    case 'Digit1':
+    case 'Digit2':
+    case 'Digit3':
+      return down ? { kind: 'reelSpeed', value: Number(code.slice(5)) / 3 } : null;
+    case 'KeyA':
+      return down ? { kind: 'castAim', yaw: current.castYaw + MAX_CAST_YAW / 8 } : null;
+    case 'KeyD':
+      return down ? { kind: 'castAim', yaw: current.castYaw - MAX_CAST_YAW / 8 } : null;
+    case 'ArrowLeft':
+      return down ? { kind: 'moveRod', x: current.rodX - 0.25, y: current.rodY } : null;
+    case 'ArrowRight':
+      return down ? { kind: 'moveRod', x: current.rodX + 0.25, y: current.rodY } : null;
+    case 'ArrowUp':
+      return down ? { kind: 'moveRod', x: current.rodX, y: current.rodY + 0.25 } : null;
+    case 'ArrowDown':
+      return down ? { kind: 'moveRod', x: current.rodX, y: current.rodY - 0.25 } : null;
+    default:
+      return null;
+  }
+}
+
 export interface InputBindings {
   /** Elemento que recebe cliques e toques do jogo (o canvas). */
   readonly surface: HTMLElement;
@@ -76,6 +169,8 @@ export interface InputBindings {
   readonly getContext: () => InputContext;
   readonly onAction: (action: GameAction) => void;
   readonly onLook: (deltaYaw: number, deltaPitch: number) => void;
+  /** Recebe o estado das ações de jogo a cada mudança (opcional). */
+  readonly onPlayerAction?: (snapshot: ActionSnapshot, action: PlayerAction) => void;
 }
 
 const BASE_SENSITIVITY = 0.0022;
@@ -85,6 +180,14 @@ export class InputController {
   private sensitivity = 1;
   private primaryHeld = false;
   private readonly b: InputBindings;
+  readonly actions = new ActionState();
+
+  /** Ponto de entrada comum para gamepad, toque ou teclado. */
+  applyAction(action: PlayerAction): ActionSnapshot {
+    const snap = this.actions.apply(action);
+    this.b.onPlayerAction?.(snap, action);
+    return snap;
+  }
 
   constructor(bindings: InputBindings) {
     this.b = bindings;
@@ -166,6 +269,13 @@ export class InputController {
       return;
     }
     if (inForm) return;
+    if (!e.repeat && isPlayState(this.b.getState())) {
+      const action = keyToAction(e.code, true, this.actions.snapshot);
+      if (action) {
+        this.applyAction(action);
+        return;
+      }
+    }
     if (e.code === 'Space') {
       if (isPlayState(this.b.getState())) e.preventDefault();
       if (!e.repeat) this.press();
@@ -176,6 +286,7 @@ export class InputController {
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
     if (e.code === 'Space') this.release();
+    else if (e.code === 'KeyR') this.applyAction({ kind: 'reel', active: false });
   };
 
   private readonly onMouseMove = (e: MouseEvent): void => {

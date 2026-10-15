@@ -52,6 +52,43 @@ describe('persistência', () => {
     expect(result.data.stats.catches).toBe(9);
   });
 
+  it('save v2 gravado antes dos presets novos, com qualidade medium, carrega sem perda', () => {
+    const legacy = {
+      version: 2,
+      settings: { quality: 'medium', showHints: false, cameraSensitivity: 1.7 },
+      volumes: { master: 0.5, music: 0.25, sfx: 0.9 },
+      bestCatch: { speciesId: 'tilapia', weightKg: 1.5, points: 300 },
+      stats: { catches: 12, escapes: 4, totalPoints: 2100, totalWeightKg: 8.75 },
+    };
+    const store = storeWith(JSON.stringify(legacy));
+    const result = loadSave(store);
+    // O save antigo não tinha settings.lureId: ele ganha o padrão sem perder o resto.
+    const expected = { ...legacy, settings: { ...legacy.settings, lureId: 'worm' } };
+    expect(result).toEqual({ data: expected, status: 'ok', issues: [] });
+    expect(writeSave(store, result.data)).toEqual({ ok: true });
+    expect(JSON.parse(store.getItem(SAVE_KEY) ?? 'null')).toEqual(expected);
+  });
+
+  it('settings.lureId faz ida e volta no save', () => {
+    const store = new MemoryStore();
+    const data = { ...defaultSaveData(), settings: { ...defaultSaveData().settings, lureId: 'spinner' as const } };
+    expect(writeSave(store, data)).toEqual({ ok: true });
+    expect(loadSave(store)).toEqual({ data, status: 'ok', issues: [] });
+  });
+
+  it('settings.lureId inválido volta ao padrão com aviso', () => {
+    const result = parseSaveData({ version: 2, settings: { lureId: 'banana' } });
+    expect(result.data.settings.lureId).toBe('worm');
+    expect(result.issues).toContain('settings.lureId inválido');
+  });
+
+  it.each(['low', 'medium', 'high', 'ultra', 'auto'] as const)('qualidade %s faz ida e volta no save', (quality) => {
+    const store = new MemoryStore();
+    const data = { ...defaultSaveData(), settings: { ...defaultSaveData().settings, quality } };
+    expect(writeSave(store, data)).toEqual({ ok: true });
+    expect(loadSave(store)).toEqual({ data, status: 'ok', issues: [] });
+  });
+
   it('não grava save inválido', () => {
     const store = new MemoryStore();
     const bad = { ...defaultSaveData(), volumes: { master: 5, music: 0, sfx: 0 } };
@@ -97,7 +134,7 @@ describe('dados corrompidos ou antigos caem nos padrões sem lançar', () => {
       storeWith(
         JSON.stringify({
           version: 2,
-          settings: { quality: 'ultra', showHints: 'sim', cameraSensitivity: 2 },
+          settings: { quality: 'insano', showHints: 'sim', cameraSensitivity: 2 },
           volumes: { master: -1, music: 0.2, sfx: 'alto' },
           bestCatch: { speciesId: 'tubarao', weightKg: 900, points: 1 },
           stats: { catches: 1.5, escapes: 3, totalPoints: -10, totalWeightKg: 2 },

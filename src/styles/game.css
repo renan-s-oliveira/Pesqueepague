@@ -62,18 +62,106 @@
 .result-card .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .fatal { color: #fff; padding: 24px; display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
 
+.meter[data-testid='direction-bar'] { bottom: 140px; }
+.meter[data-testid='direction-bar'] .meter-fill { background: var(--ui-focus); }
+.fight-panel { position: absolute; left: 16px; bottom: 96px; background: var(--ui-bg); padding: 10px 14px; border-radius: var(--ui-radius); min-width: 190px; font-size: 14px; }
+.fight-rows { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+.fight-rows dt { color: var(--ui-muted); }
+.fight-rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Estúdio da captura: o jogo continua atrás, desfocado; o exemplar 3D ocupa a cena. */
+.capture-screen {
+  position: absolute; inset: 0; z-index: 10; pointer-events: auto; color: var(--ui-fg);
+  background: radial-gradient(ellipse at 40% 45%, rgba(8, 20, 28, 0.35), rgba(4, 10, 15, 0.82));
+  backdrop-filter: blur(14px) saturate(0.85); -webkit-backdrop-filter: blur(14px) saturate(0.85);
+  animation: capture-fade 0.45s ease;
+}
+.capture-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+.capture-canvas:active { cursor: grabbing; }
+.capture-canvas:focus-visible { outline: 3px solid var(--ui-focus); outline-offset: -3px; }
+.capture-panel { position: absolute; top: 24px; right: 24px; width: min(340px, calc(100vw - 48px)); gap: 10px; }
+.catch-header { display: flex; flex-direction: column; gap: 4px; }
+.catch-name { margin: 0; font-size: 26px; }
+.catch-scientific { margin: 0; font-style: italic; color: var(--ui-muted); }
+.catch-rarity { align-self: flex-start; font-size: 13px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: rgba(244, 241, 232, 0.16); border: 1px solid rgba(244, 241, 232, 0.55); }
+.catch-rarity.rarity-legendary { background: var(--ui-accent); color: var(--ui-accent-fg); border-color: var(--ui-accent); }
+.catch-record-badge { align-self: flex-start; font-size: 13px; font-weight: 800; color: var(--ui-accent-fg); background: var(--ui-accent); padding: 2px 10px; border-radius: 999px; }
+.catch-rows { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 15px; }
+.catch-rows dt { color: var(--ui-muted); }
+.catch-rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.capture-actions { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 32px); }
+.capture-actions .ui-btn { min-width: 0; text-align: center; }
+.capture-actions .ui-btn:hover { transform: translateY(-2px); }
+.capture-actions .ui-btn.active { border-color: var(--ui-focus); background: rgba(127, 212, 255, 0.18); }
+.capture-status { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); margin: 0; min-height: 1.4em; background: var(--ui-bg); padding: 4px 12px; border-radius: var(--ui-radius); font-size: 14px; }
+.capture-status:empty { visibility: hidden; }
+
+/* Galeria: cards com foto ou miniatura, filtros, ordenação e busca. */
+.panel.wide { max-width: min(780px, 94vw); }
+.gallery { display: flex; flex-direction: column; gap: 12px; }
+.gallery-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.gallery select, .gallery input[type='search'], .equipment select {
+  min-height: 32px; font: inherit; background: rgba(0, 0, 0, 0.4); color: var(--ui-fg);
+  border: 1px solid rgba(244, 241, 232, 0.55); border-radius: 6px; padding: 4px 8px;
+}
+.gallery select:focus-visible, .gallery input:focus-visible, .equipment select:focus-visible, .trophy-close:focus-visible {
+  outline: 3px solid var(--ui-focus); outline-offset: 2px;
+}
+.gallery-status { margin: 0; color: var(--ui-muted); font-size: 14px; min-height: 1.2em; }
+.gallery-cards { list-style: none; margin: 0; padding: 2px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; max-height: 44vh; overflow: auto; }
+.gallery-card { background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(244, 241, 232, 0.3); border-radius: var(--ui-radius); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.gallery-card .catch-rows { font-size: 13px; }
+.gallery-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.gallery-card-name { margin: 0; font-size: 17px; }
+.gallery-thumb { width: 100%; aspect-ratio: 4 / 3; border-radius: 6px; object-fit: cover; background: #0b2430; display: block; }
+.gallery-thumb-fallback svg { width: 100%; height: 100%; border-radius: 6px; display: block; }
+.gallery-empty { grid-column: 1 / -1; color: var(--ui-muted); padding: 24px 8px; text-align: center; }
+
+/* Conquistas */
+.achievement-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; max-height: 50vh; overflow: auto; }
+.achievement-item { border: 1px solid rgba(244, 241, 232, 0.3); border-radius: var(--ui-radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.achievement-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.achievement-title { margin: 0; font-size: 16px; }
+.achievement-status { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; border: 1px solid rgba(244, 241, 232, 0.55); white-space: nowrap; }
+.achievement-item.status-unlocked .achievement-status { background: var(--ui-accent); color: var(--ui-accent-fg); border-color: var(--ui-accent); }
+.achievement-item.status-locked { opacity: 0.75; }
+.achievement-desc, .achievement-progress { margin: 0; font-size: 13px; color: var(--ui-muted); }
+.achievement-bar { height: 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(244, 241, 232, 0.4); overflow: hidden; }
+.achievement-bar-fill { height: 100%; background: var(--ui-accent); }
+
+/* Sala de troféus: sala 3D em tela cheia sobre o jogo. */
+.trophy-room { position: absolute; inset: 0; z-index: 12; pointer-events: auto; color: var(--ui-fg); background: #0a151d; animation: capture-fade 0.45s ease; }
+.trophy-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.trophy-stats { position: absolute; top: 24px; right: 24px; width: min(340px, calc(100vw - 48px)); max-height: 70vh; overflow: auto; }
+.trophy-stats h3 { margin: 8px 0 0; font-size: 15px; }
+.trophy-records { margin: 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.trophy-close { position: absolute; left: 24px; bottom: 24px; }
+
+@keyframes capture-fade { from { opacity: 0; } to { opacity: 1; } }
+
 @keyframes pulse { from { transform: translateX(-50%) scale(1); } to { transform: translateX(-50%) scale(1.08); } }
 
 @media (prefers-reduced-motion: reduce) {
   .ui-btn, .meter-fill { transition: none; }
   .ui-btn:hover { transform: none; }
   .bite-alert { animation: none; }
+  .capture-screen { animation: none; }
+  .capture-actions .ui-btn:hover { transform: none; }
+  .trophy-room { animation: none; }
 }
 @media (forced-colors: active) {
   .meter-fill { background: Highlight; }
   .ui-btn { border-color: ButtonText; }
+  .achievement-bar-fill { background: Highlight; }
 }
 @media (max-width: 560px) {
   .menu { align-items: center; }
   .ui-btn { min-width: 0; width: 100%; }
+  .fight-panel { left: 8px; bottom: 120px; font-size: 13px; }
+  .capture-panel { top: 8px; right: 8px; left: 8px; width: auto; max-height: 42vh; font-size: 14px; }
+  .capture-actions { bottom: 12px; width: calc(100vw - 16px); }
+  .capture-actions .ui-btn { flex: 1 1 100%; }
+  .gallery-cards { grid-template-columns: 1fr; max-height: 38vh; }
+  .trophy-stats { top: 8px; right: 8px; left: 8px; width: auto; max-height: 40vh; font-size: 14px; }
+  .trophy-close { left: 8px; bottom: 12px; width: calc(100vw - 16px); }
 }

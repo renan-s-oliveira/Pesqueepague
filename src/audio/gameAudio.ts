@@ -23,6 +23,22 @@ const IN_GAME: ReadonlySet<GameState> = new Set<GameState>([
   'ESCAPED',
 ]);
 
+/** Eventos de jogo fora da máquina de estados; quem os detecta toca o efeito daqui. */
+export type GameAudioEvent = 'fishJumped' | 'lineStressed' | 'weighIn' | 'achievementUnlocked';
+
+const EVENT_SFX: Readonly<Record<GameAudioEvent, SfxId>> = {
+  fishJumped: 'jump',
+  lineStressed: 'tension',
+  weighIn: 'weigh',
+  achievementUnlocked: 'achievement',
+};
+
+export function sfxForEvent(event: GameAudioEvent): SfxId {
+  const id = EVENT_SFX[event];
+  if (id === undefined) throw new RangeError(`evento de áudio desconhecido: ${String(event)}`);
+  return id;
+}
+
 /** Efeito tocado ao entrar em cada estado; WAITING vindo de CASTING é a isca caindo na água. */
 export function sfxForTransition(from: GameState, to: GameState): SfxId | null {
   if (from === 'PAUSED') return null;
@@ -59,5 +75,7 @@ export function wireGameAudio(states: TransitionSource, audio: GameAudioSink): (
     else if (from === 'PAUSED') audio.setPaused(false).catch(reportPauseError);
     const sfx = sfxForTransition(from, to);
     if (sfx !== null) audio.playSfx(sfx);
+    // A pesagem acontece logo depois da captura; o som dela acompanha a entrada em CAUGHT.
+    if (to === 'CAUGHT' && from !== 'PAUSED') audio.playSfx(sfxForEvent('weighIn'));
   });
 }
