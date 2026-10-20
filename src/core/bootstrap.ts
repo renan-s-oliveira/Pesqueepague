@@ -138,6 +138,8 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
       lake.look.setPosition(EYE.x, EYE.y, EYE.z);
       lake.look.setAngles(0, -0.05);
       input?.requestLock();
+      entrance.start('opening');
+      container.dispatchEvent(new Event('cinematic-start'));
     },
     onResume: () => {
       session.resume();
@@ -189,7 +191,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
       return randomLegendary();
     },
   });
-  const entrance = new LegendaryEntrance(container, lake.scene, lake.camera);
+  const entrance = new LegendaryEntrance(container, lake.scene, lake.camera, () => container.dispatchEvent(new Event('cinematic-end')));
   const offLegendary = session.onLegendary(() => entrance.start());
   const visuals = new FishingVisuals(lake.scene, lake.camera, (x, z, strength) =>
     lake.lake.addRipple(x, z, strength, elapsedNow),
@@ -213,7 +215,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   }
 
   const onAction = (action: GameAction): void => {
-    if (session.cinematicRemainingMs > 0 && action !== 'pause' && action !== 'resume') return;
+    if ((entrance.isPlaying || session.cinematicRemainingMs > 0) && action !== 'pause' && action !== 'resume') return;
     switch (action) {
       case 'beginCharge':
         session.beginCharge();
@@ -256,7 +258,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
     getState: () => states.state,
     getContext: () => ({ charging: session.isCharging }),
     onAction,
-    onLook: (dy, dp) => { if (!session.cinematicRemainingMs) lake.look.rotate(dy, dp); },
+    onLook: (dy, dp) => { if (!entrance.isPlaying && !session.cinematicRemainingMs) lake.look.rotate(dy, dp); },
     onPlayerAction: (snapshot, action) => {
       if (action.kind === 'reel' && states.state === 'REELING') session.setReeling(snapshot.reeling);
     },
@@ -324,6 +326,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   });
 
   let elapsedNow = 0;
+  let cinematicLastFrame = Date.now();
   let flightMs = 0;
   let caughtSpecies: (typeof session.journal)[number]['speciesId'] | null = null;
   const offFrame = lake.addFrameHook((dt, elapsed) => {
@@ -331,7 +334,11 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
     if (input) session.setControls(input.actions.snapshot);
     session.update();
     const state = states.state;
-    entrance.update(state === 'PAUSED' ? 0 : dt);
+    // A abertura usa tempo real; o limite do passo da física não deve alongar o filme em FPS baixo.
+    const cinematicNow = Date.now();
+    const cinematicDt = Math.min(1, Math.max(0, cinematicNow - cinematicLastFrame) / 1000);
+    cinematicLastFrame = cinematicNow;
+    entrance.update(state === 'PAUSED' ? 0 : cinematicDt);
     if (state === 'MENU') entrance.finish();
     ui?.setCinematic(entrance.isPlaying || session.cinematicRemainingMs > 0);
     if (state === 'MENU') {

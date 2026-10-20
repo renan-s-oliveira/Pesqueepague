@@ -108,6 +108,10 @@ bootstrap(container, config).then((game) => {
   audio.attachUnlock(window);
   const offAudio = wireGameAudio(game.states, audio);
   const offLegendaryAudio = game.session.onLegendary(() => audio.startLoop('legendaryMusic'));
+  const startOpeningMusic = (): void => audio.startLoop('legendaryMusic');
+  const finishOpeningMusic = (): void => { if (!game.session.legendaryActive) audio.stopLoop('legendaryMusic'); };
+  container.addEventListener('cinematic-start', startOpeningMusic);
+  container.addEventListener('cinematic-end', finishOpeningMusic);
   const offEncounterAudio = game.states.onTransition((_from, to) => {
     if (to === 'MENU' || to === 'CAUGHT' || to === 'ESCAPED' || to === 'IDLE') audio.stopLoop('legendaryMusic');
   });
@@ -123,6 +127,8 @@ bootstrap(container, config).then((game) => {
     () => {
       offAudio();
       offLegendaryAudio();
+      container.removeEventListener('cinematic-start', startOpeningMusic);
+      container.removeEventListener('cinematic-end', finishOpeningMusic);
       offEncounterAudio();
       container.removeEventListener('game-volumes', updateVolumes);
       void audio.dispose();

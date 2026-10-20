@@ -46,6 +46,7 @@ export async function skipToBite(page: Page): Promise<void> {
 
 /** Arremessa segurando o botão; devolve quando a isca está na água. */
 export async function cast(page: Page, holdMs = 800): Promise<void> {
+  await expect(page.getByTestId('legendary-entrance')).toBeHidden({ timeout: 20000 });
   const canvas = page.locator('canvas').first();
   const box = await canvas.boundingBox();
   if (!box) throw new Error('canvas do jogo não encontrado');

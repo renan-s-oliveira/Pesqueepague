@@ -11,8 +11,9 @@ export class LegendaryEntrance {
   private readonly rotation = new Quaternion();
   private time = 0;
   private active = false;
+  private readonly subtitle = document.createElement('p');
   get isPlaying(): boolean { return this.active; }
-  constructor(container: HTMLElement, private readonly scene: Scene, private readonly camera: PerspectiveCamera) {
+  constructor(container: HTMLElement, private readonly scene: Scene, private readonly camera: PerspectiveCamera, private readonly onFinish: () => void = () => {}) {
     this.group.name = 'legendary-shadow';
     const outline = new Shape();
     outline.moveTo(-6, 0); outline.bezierCurveTo(-4, 1.1, 2, 1.3, 4, .2);
@@ -25,12 +26,13 @@ export class LegendaryEntrance {
     this.root.dataset['testid'] = 'legendary-entrance'; this.root.setAttribute('role', 'status');
     const eyebrow = document.createElement('p'); eyebrow.className = 'menu-eyebrow'; eyebrow.textContent = 'O LAGO PRENDE A RESPIRAÇÃO';
     const title = document.createElement('h2'); title.textContent = 'Uma sombra impossível';
-    const subtitle = document.createElement('p'); subtitle.textContent = 'Uma chance em 1.000.000.000. O Guardião despertou.';
-    this.root.append(eyebrow, title, subtitle); container.append(this.root);
+    this.root.append(eyebrow, title, this.subtitle); container.append(this.root);
   }
-  start(): void {
+  start(mode: 'opening' | 'encounter' = 'encounter'): void {
     if (this.active) return;
     this.active = true; this.time = 0; this.position.copy(this.camera.position); this.rotation.copy(this.camera.quaternion);
+    this.subtitle.textContent = mode === 'opening' ? 'Nas profundezas, uma lenda aguarda o seu próximo arremesso.' : 'Uma chance em 1.000.000.000. O Guardião despertou.';
+    this.root.dataset['mode'] = mode;
     this.root.hidden = false; this.group.visible = true;
   }
   update(dt: number): void {
@@ -51,6 +53,7 @@ export class LegendaryEntrance {
     if (!this.active) return;
     this.active = false; this.root.hidden = true; this.group.visible = false;
     this.camera.position.copy(this.position); this.camera.quaternion.copy(this.rotation);
+    this.onFinish();
   }
   dispose(): void { this.finish(); disposeObject3D(this.group); this.group.removeFromParent(); this.root.remove(); }
 }

@@ -12,6 +12,8 @@ O **Guardião Abissal** é a 54ª espécie, secreta e exclusiva do Igapó. Cada 
 
 ### Molinete e controles
 
+Ao clicar em **Nova pescaria** ou **Continuar**, a cinematic de abertura mostra a sombra do Guardião por oito segundos, com a trilha intensa, antes de liberar os controles. Essa apresentação acontece em todos os lagos e não representa um encontro sorteado; a chance real do Guardião no Igapó continua em 1 em 1 bilhão por arremesso.
+
 A vara usa o molinete original. Segure o botão esquerdo, Espaço ou R para recolher a linha e solte para aliviar a tensão. Ajuste o drag com + e −.
 
 O menu do Pesque & Pague abre sobre o lago e oferece acesso direto ao álbum e à sala de troféus. Na galeria, o atlas apresenta habitat, profundidade, temperatura e iscas favoritas de cada espécie, incluindo as que você ainda não capturou. Os cards abrem fichas com foto, medidas, comparação com seu recorde e navegação entre capturas. Use **Só recordes**, busca e filtros para explorar a coleção.
