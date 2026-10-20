@@ -3,7 +3,7 @@
  * cabo de cortiça, molinete com carretel e manivela que giram no recolhimento e
  * passadores (guias) acompanhando a flexão. Sem alocação por frame no update.
  */
-import { BoxGeometry, CylinderGeometry, Group, Mesh, MeshStandardMaterial, SphereGeometry, TorusGeometry, Vector3 } from 'three';
+import { CylinderGeometry, Group, Mesh, MeshStandardMaterial, SphereGeometry, TorusGeometry, Vector3 } from 'three';
 import { disposeObject3D } from '../../world/dispose.ts';
 import type { RodPoint } from '../rodPhysics.ts';
 
@@ -60,10 +60,10 @@ export class RodModel {
 
     // Molinete: corpo preso abaixo do cabo, carretel e manivela que giram no recolhimento.
     const reel = new Group();
-    reel.position.copy(back).multiplyScalar(0.04).add(new Vector3(0, 0.045, 0));
-    const body = new Mesh(new BoxGeometry(0.09, 0.055, 0.07), reelMat);
+    reel.position.copy(back).multiplyScalar(0.04).add(new Vector3(0, -0.07, 0));
+    const body = new Mesh(new CylinderGeometry(0.018, 0.018, 0.05, 10), reelMat);
     body.rotation.z = Math.PI / 2;
-    this.reelSpool = new Mesh(new CylinderGeometry(0.024, 0.024, 0.065, 16), metalMat);
+    this.reelSpool = new Mesh(new CylinderGeometry(0.032, 0.032, 0.03, 12), metalMat);
     this.reelSpool.rotation.z = Math.PI / 2;
     this.reelHandle = new Group();
     const arm = new Mesh(new CylinderGeometry(0.004, 0.004, 0.07, 6), reelMat);
@@ -71,10 +71,7 @@ export class RodModel {
     const knob = new Mesh(new SphereGeometry(0.009, 8, 6), metalMat);
     knob.position.y = 0.07;
     this.reelHandle.add(arm, knob);
-    const secondArm = arm.clone(); secondArm.position.y = -0.035;
-    const secondKnob = knob.clone(); secondKnob.position.y = -0.07;
-    this.reelHandle.add(secondArm, secondKnob);
-    this.reelHandle.position.x = 0.065;
+    this.reelHandle.position.x = 0.035;
     reel.add(body, this.reelSpool, this.reelHandle);
     this.group.add(reel);
   }

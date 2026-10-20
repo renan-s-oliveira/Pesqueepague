@@ -127,8 +127,6 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   const countCatches = (): number => session.journal.filter((e) => e.outcome === 'caught').length;
 
   const handlers = {
-    onCrank: (turns: number) => session.crank(turns),
-    onPayout: (on: boolean) => session.setPayout(on),
     onVolumesChange: (volumes: SaveData['volumes']) => {
       save = { ...save, volumes }; persist();
       container.dispatchEvent(new CustomEvent('game-volumes', { detail: volumes }));
@@ -254,8 +252,6 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   };
 
   input = new InputController({
-    onCrank: handlers.onCrank,
-    onPayout: handlers.onPayout,
     surface: lake.canvas,
     getState: () => states.state,
     getContext: () => ({ charging: session.isCharging }),
@@ -388,8 +384,6 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
         w.__fp['forceLegendaryNextCast'] = () => { forceLegendary = true; };
         w.__fp['activeLake'] = () => session.activeLake;
         w.__fp['legendaryActive'] = () => session.legendaryActive;
-        w.__fp['crank'] = (turns: number) => session.crank(turns);
-        w.__fp['payout'] = (on: boolean) => session.setPayout(on);
         w.__fp['lineOut'] = () => session.lineDistanceM;
         w.__fp['currentSpecies'] = () => session.currentFish?.species.id;
         w.__fp['legendaryVisual'] = () => ({ visible: lake.scene.getObjectByName('legendary-shadow')?.visible, shapes: lake.scene.getObjectByName('legendary-shadow')?.children.length });

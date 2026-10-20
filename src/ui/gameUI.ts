@@ -10,8 +10,6 @@ import { creditsContent } from './creditsView.ts';
 import { LAKES, getLake, lakeSpecies } from '../world/lakes.ts';
 
 export interface UIHandlers {
-  readonly onCrank?: (turns: number) => void;
-  readonly onPayout?: (on: boolean) => void;
   readonly onPlay: () => void;
   readonly onResume: () => void;
   readonly onQuitToMenu: () => void;
@@ -59,7 +57,7 @@ const HINTS: Partial<Record<GameState, string>> = {
   CASTING: 'A isca está no ar…',
   WAITING: 'Espere a boia afundar. Clique para recolher a linha sem peixe.',
   HOOKED: 'Mordeu! Clique agora para fisgar.',
-  REELING: 'Gire a manivela ou role o mouse para recolher. E libera linha. R recolhe continuamente.',
+  REELING: 'Segure para recolher. Solte quando a tensão ficar no vermelho.',
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
@@ -124,7 +122,6 @@ export class GameUI {
   private readonly pause = el('section', 'screen pause');
   private readonly pausePanel = el('div', 'panel');
   private readonly crosshair = el('div', 'crosshair');
-  private readonly baitcaster = el('div', 'baitcaster');
   private settings: Settings;
   private volumes: Volumes;
   private gallery: GalleryView | null = null;
@@ -211,7 +208,6 @@ export class GameUI {
     this.fight.hidden = true;
     this.direction.root.hidden = true;
     this.hud.append(
-      this.baitcaster,
       this.crosshair,
       this.stats,
       this.power.root,
@@ -223,24 +219,6 @@ export class GameUI {
       this.hint,
       this.help,
     );
-    const crank = button('↻', 'reel-crank', () => h.onCrank?.(0.4), 'reel-crank');
-    crank.setAttribute('aria-label', 'Girar a manivela da carretilha');
-    let angle: number | null = null;
-    let rotation = 0;
-    const pointerAngle = (event: PointerEvent): number => { const rect = crank.getBoundingClientRect(); return Math.atan2(event.clientY - rect.top - rect.height / 2, event.clientX - rect.left - rect.width / 2); };
-    crank.addEventListener('pointerdown', (event) => { crank.setPointerCapture(event.pointerId); angle = pointerAngle(event); });
-    crank.addEventListener('pointermove', (event) => {
-      if (angle === null) return;
-      const next = pointerAngle(event);
-      const delta = Math.atan2(Math.sin(next - angle), Math.cos(next - angle));
-      angle = next;
-      if (delta > 0) { rotation += delta; crank.style.transform = `rotate(${rotation}rad)`; h.onCrank?.(delta / (Math.PI * 2)); }
-    });
-    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) crank.addEventListener(event, () => { angle = null; });
-    const release = button('Liberar linha · E', 'reel-payout', () => {}, 'ui-btn compact');
-    release.addEventListener('pointerdown', (event) => { release.setPointerCapture(event.pointerId); h.onPayout?.(true); });
-    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture', 'blur']) release.addEventListener(event, () => h.onPayout?.(false));
-    this.baitcaster.append(el('span', 'menu-eyebrow', 'CARRETILHA'), crank, el('span', 'note', 'C libera o cursor · Gire ou role para cima'), release);
 
     this.result.setAttribute('role', 'dialog');
     this.result.setAttribute('aria-modal', 'true');
@@ -337,7 +315,6 @@ export class GameUI {
     this.progress.root.hidden = s.state !== 'REELING';
     setMeter(this.progress, s.progress);
     this.fight.hidden = s.state !== 'REELING';
-    this.baitcaster.hidden = s.state !== 'REELING';
     if (s.state === 'REELING') this.updateFight(s.fight);
     this.biteAlert.hidden = s.state !== 'HOOKED';
     const statsText = `Capturas: ${s.catches} · Pontos: ${s.score}`;
@@ -500,8 +477,7 @@ export class GameUI {
       'Mova o mouse para olhar em volta (clique no lago para travar o cursor).',
       'Segure o botão esquerdo ou Espaço para carregar a força e solte para arremessar.',
       'Quando a boia afundar e aparecer “Mordeu!”, clique para fisgar.',
-      'Gire a manivela na tela ou role o mouse para recolher. R (ou botão esquerdo) recolhe continuamente.',
-      'Segure E ou Liberar linha para soltar o carretel e aliviar a tensão. Solte para frear novamente.',
+      'Segure o botão esquerdo, Espaço ou R para recolher; solte quando a tensão ficar no vermelho para ela não arrebentar.',
       'ESC pausa o jogo. H mostra ou esconde esta ajuda. F3 mostra o painel de diagnóstico.',
     ]) {
       list.append(el('li', '', line));

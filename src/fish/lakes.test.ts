@@ -7,8 +7,6 @@ import { LEGENDARY_ODDS, rollLegendary, LEGENDARY_INTRO_MS } from './legendary.t
 import { FishingSession } from '../gameplay/fishingSession.ts';
 import { GameStateMachine } from '../core/stateMachine.ts';
 import { ManualClock } from '../utils/clock.ts';
-import { DragReel } from '../fishing/reel.ts';
-import { LINE_SPECS } from '../fishing/linePhysics.ts';
 import { defaultSaveData, parseSaveData } from '../config/persistence.ts';
 
 describe('três lagos exclusivos', () => {
@@ -87,15 +85,4 @@ describe('encontro de uma chance em um bilhão', () => {
       expect(roll).not.toHaveBeenCalled(); expect(session.setLake('igapo').ok).toBe(false);
     }
   });
-});
-
-it('liberar o carretel cede linha e reduz a tensão; girar recolhe linha', () => {
-  const reel = new DragReel(LINE_SPECS.mono030, 10, 40);
-  reel.update(100, { retrieve: 1, fishSpeedMps: 1 });
-  const tension = reel.tensionN; const length = reel.lineOutM;
-  reel.payOut(1);
-  expect(reel.lineOutM).toBeGreaterThan(length); expect(reel.tensionN).toBeLessThan(tension);
-  const released = reel.lineOutM;
-  reel.update(100, { retrieve: 1, fishSpeedMps: -1 });
-  expect(reel.lineOutM).toBeLessThan(released);
 });

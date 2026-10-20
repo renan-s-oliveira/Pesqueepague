@@ -249,16 +249,11 @@
 .lake-card .ui-btn { font-size: 13px; min-width: 0; margin-top: 8px; }
 .lake-serra { background: radial-gradient(ellipse at top right, #6d9cb477, transparent 70%), #122b39; }
 .lake-igapo { background: radial-gradient(ellipse at top right, #80904c44, transparent 70%), #11251d; }
-.baitcaster { position: absolute; pointer-events: auto; right: 20px; bottom: 88px; width: 190px; display: flex; align-items: center; flex-direction: column; gap: 8px; padding: 14px; background: #0b2524e8; border: 1px solid #d3b16c66; border-radius: 14px; }
-.reel-crank { width: 92px; height: 92px; border-radius: 50%; border: 8px solid #263b39; box-shadow: inset 0 0 0 2px #b6a072, 0 4px 20px #0005; background: radial-gradient(circle, #c6b288 7%, #36443f 8%, #182b27 40%, #567367 42%, #162a26 46%); color: #e8c279; font-size: 50px; cursor: grab; touch-action: none; }
-.reel-crank:active { cursor: grabbing; }
-.baitcaster .note { margin: 0; font-size: 10px; text-align: center; }
 .legendary-entrance { position: absolute; inset: 0; z-index: 15; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; box-sizing: border-box; padding: 0 24px 14vh; border-top: 9vh solid #020b10; border-bottom: 9vh solid #020b10; background: radial-gradient(ellipse at center, transparent 30%, #020b1099); color: #f4e9d0; text-align: center; }
 .legendary-entrance[hidden] { display: none; }
 .ui-root.cinematic .hud { visibility: hidden; }
 .legendary-entrance h2 { font: 400 clamp(28px, 5vw, 58px) Georgia, serif; margin: 12px 0; text-shadow: 0 3px 20px #000; }
 .legendary-entrance > p:last-child { font-size: 12px; letter-spacing: .08em; }
-@media (max-width: 680px) { .baitcaster { right: 8px; bottom: 180px; width: 120px; padding: 8px; } .reel-crank { width: 68px; height: 68px; font-size: 34px; } .baitcaster .ui-btn { font-size: 10px; padding: 6px; } }
 @media (max-width: 680px) { .credits-grid { grid-template-columns: 1fr; } }
 .capture-detail > .gallery-thumb { margin-top: 16px; max-height: 220px; }
 .next-achievement { padding: 20px; margin: 16px 0; border-left: 3px solid #e9b56d; background: linear-gradient(110deg, #75602c44, #153a34); }

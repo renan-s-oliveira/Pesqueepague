@@ -38,21 +38,18 @@ test('lagos exclusivos, seleção persistida e encontro lendário somente por so
   expect(errors).toEqual([]);
 });
 
-test('carretilha: roda do mouse e liberação de linha funcionam durante a briga', async ({ page }) => {
+test('molinete original: recolhimento por R e ausência da manivela na tela', async ({ page }) => {
   test.setTimeout(120000);
   await openGame(page);
   await page.getByTestId('menu-play').click();
   await cast(page, 300); await skipToBite(page); await waitState(page, 'HOOKED');
   await page.mouse.down(); await page.mouse.up(); await waitState(page, 'REELING');
-  await expect(page.getByTestId('reel-crank')).toBeVisible();
+  await expect(page.getByTestId('reel-crank')).toHaveCount(0);
+  await expect(page.getByTestId('reel-payout')).toHaveCount(0);
   const before = await page.evaluate(() => (window as any).__fp.lineOut());
-  await page.mouse.wheel(0, -160);
+  await page.keyboard.down('KeyR');
   await page.evaluate(() => (window as any).__fp.advance(200));
   await expect.poll(() => page.evaluate(() => (window as any).__fp.lineOut())).toBeLessThan(before);
-  const wound = await page.evaluate(() => (window as any).__fp.lineOut());
-  await page.keyboard.down('KeyE');
-  await page.evaluate(() => (window as any).__fp.advance(300));
-  await expect.poll(() => page.evaluate(() => (window as any).__fp.lineOut())).toBeGreaterThan(wound);
-  await page.keyboard.up('KeyE');
-  await page.screenshot({ path: test.info().outputPath('baitcaster.png') });
+  await page.keyboard.up('KeyR');
+  await page.screenshot({ path: test.info().outputPath('molinete-original.png') });
 });

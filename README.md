@@ -10,9 +10,9 @@ Em **Selecionar cenário**, escolha o Lago Tropical (18 espécies), o Lago da Se
 
 O **Guardião Abissal** é a 54ª espécie, secreta e exclusiva do Igapó. Cada arremesso válido nesse lago faz uma única tentativa independente de **1 em 1.000.000.000**, usando aleatoriedade do navegador e rejeição para evitar viés. Esperar ou receber novas beliscadas não faz sorteios adicionais. A entrada dura oito segundos: apenas uma sombra atravessa a água, com trilha original de percussão, baixo e cordas sintetizadas. A mordida aguarda o fim da entrada; a trilha continua durante o encontro e respeita pausa e volume da música. Não existe um contador de garantia.
 
-### Carretilha
+### Molinete e controles
 
-O modelo tem carretel transversal sobre a vara e manivela dupla. Durante a briga, role o mouse **para cima** ou gire a manivela na tela no sentido horário para recolher. **C** alterna o cursor livre para acessar a manivela. Segure **E** ou **Liberar linha** para destravar o carretel e aliviar a tensão; solte para frear. **R**, botão esquerdo e Espaço continuam disponíveis para recolher continuamente. Os indicadores mostram distância, velocidade, drag e fôlego.
+A vara usa o molinete original. Segure o botão esquerdo, Espaço ou R para recolher a linha e solte para aliviar a tensão. Ajuste o drag com + e −.
 
 O menu do Pesque & Pague abre sobre o lago e oferece acesso direto ao álbum e à sala de troféus. Na galeria, o atlas apresenta habitat, profundidade, temperatura e iscas favoritas de cada espécie, incluindo as que você ainda não capturou. Os cards abrem fichas com foto, medidas, comparação com seu recorde e navegação entre capturas. Use **Só recordes**, busca e filtros para explorar a coleção.
 
@@ -60,9 +60,6 @@ Os comandos do Playwright sobem o próprio servidor (`vite --mode e2e` em `127.0
 | Botão esquerdo / Espaço — clicar | Quando aparece “Mordeu!” (HOOKED): fisga. |
 | Botão esquerdo / Espaço — segurar | Na briga (REELING): recolhe a linha; solte quando a tensão ficar no vermelho para ela não arrebentar. |
 | R — segurar | Recolhe a linha (mesma ação do botão, pela camada de ações de `src/core/input.ts`). |
-| Roda do mouse para cima / manivela na tela | Gira a carretilha e recolhe linha durante a briga. |
-| E — segurar | Libera linha pelo carretel e alivia a tensão. |
-| C | Alterna cursor livre para operar a manivela na tela. |
 | `+` / `-` | Aperta ou solta o drag do molinete. |
 | 1, 2, 3 | Velocidade de recolhimento. |
 | Setas / A, D | Movem a vara / mudam a direção do arremesso. |

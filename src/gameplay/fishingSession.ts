@@ -133,8 +133,6 @@ export class FishingSession {
   private mythicCast = false;
   private introMs = 0;
   private readonly legendaryListeners = new Set<() => void>();
-  private payout = false;
-  private crankMs = 0;
   private readonly cfg: SessionConfig;
   private gameTime = 0;
   private accumulator = 0;
@@ -202,11 +200,6 @@ export class FishingSession {
     this.clearCast();
     return OK;
   }
-  setPayout(on: boolean): void { this.payout = on; }
-  crank(turns: number): void {
-    if (!Number.isFinite(turns) || turns <= 0 || this.introMs > 0) return;
-    this.crankMs = Math.min(500, this.crankMs + turns * 350);
-  }
 
   get score(): number {
     return this.totalScore;
@@ -251,7 +244,7 @@ export class FishingSession {
   }
 
   get fightSnapshot() {
-    return { distanceM: this.lineDistanceM, speedMps: this.payout ? -2.4 : (this.reeling || this.crankMs > 0) ? this.controlsState.reelSpeed * this.cfg.dragReel.maxRetrieveMps : 0, dragN: this.payout ? 0 : this.dragN, stamina: this.stamina };
+    return { distanceM: this.lineDistanceM, speedMps: this.reeling ? this.controlsState.reelSpeed * this.cfg.dragReel.maxRetrieveMps : 0, dragN: this.dragN, stamina: this.stamina };
   }
 
   /** Drag aplicado no molinete, em newtons. */
@@ -458,14 +451,10 @@ export class FishingSession {
         // A tensão freia o peixe: em linha frouxa ele arranca; esticada, cede e a linha relaxa.
         const pullMps = (this.burstLeftMs > 0 ? profile.burstPull : profile.basePull) * PULL_TO_MPS;
         const fishSpeedMps = pullMps * (1 - tensionFraction) - LINE_RECOVERY_MPS * tensionFraction;
-        const cranking = this.crankMs > 0;
-        this.crankMs = Math.max(0, this.crankMs - dtMs);
-        this.line.setDrag(this.payout ? 0 : this.dragN);
         const status = this.line.update(dtMs, {
-          retrieve: !this.payout && (this.reeling || cranking) ? this.controlsState.reelSpeed : 0,
+          retrieve: this.reeling ? this.controlsState.reelSpeed : 0,
           fishSpeedMps,
         });
-        if (this.payout) this.line.payOut(dtMs / 1000 * 2.4);
         const drain = SPECIES_BEHAVIOR[this.fish.species.id].staminaDrainPerSec * (dtMs / 1000);
         const delta = tensionFraction < SLACK_TENSION_FRACTION ? drain * 0.5 : -drain * tensionFraction;
         this.stamina = Math.min(1, Math.max(0, this.stamina + delta));
@@ -543,8 +532,6 @@ export class FishingSession {
   private clearCast(): void {
     this.mythicCast = false;
     this.introMs = 0;
-    this.payout = false;
-    this.crankMs = 0;
     this.flight = null;
     this.lure = null;
     this.fish = null;
