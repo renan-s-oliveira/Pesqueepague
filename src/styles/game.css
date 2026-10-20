@@ -228,6 +228,21 @@
 .species-facts { font-size: 14px; line-height: 1.7; }
 .species-facts h2 { font: 400 32px Georgia, serif; margin-bottom: 8px; }
 .species-facts h3 { font-size: 14px; color: #efc78d; }
+.credits { color: var(--ui-fg); line-height: 1.65; }
+.credits h2 { font: 400 34px Georgia, serif; color: #f5ead1; margin: 8px 0 18px; }
+.credits-intro { font-size: 17px; color: #efc78d; margin: 0 0 12px; }
+.credits-note { font-size: 13px; color: #b8ccc2; margin: 8px 0; overflow-wrap: anywhere; }
+.credits-section-title { font: 400 24px Georgia, serif; margin: 28px 0 12px; padding-bottom: 10px; border-bottom: 1px solid #63827866; color: #efc78d; }
+.credits-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.credit-card { background: #0b2325; border: 1px solid #63827866; border-radius: 8px; align-self: start; }
+.credit-card > summary { cursor: pointer; padding: 14px 16px; font-size: 13px; color: #f5ead1; overflow-wrap: anywhere; }
+.credit-card[open] { border-color: #bfa670; }
+.credit-fields { padding: 0 16px 16px; margin: 0; display: grid; grid-template-columns: 65px minmax(0, 1fr); gap: 8px 12px; font-size: 12px; }
+.credit-fields dt { color: #a3bcac; }
+.credit-fields dd { margin: 0; overflow-wrap: anywhere; }
+.credits code { font-size: .9em; padding: 2px 4px; border-radius: 3px; background: #d9e6c90c; color: #dfcda8; overflow-wrap: anywhere; }
+.credits a { color: #efc78d; text-underline-offset: 3px; }
+@media (max-width: 680px) { .credits-grid { grid-template-columns: 1fr; } }
 .capture-detail > .gallery-thumb { margin-top: 16px; max-height: 220px; }
 .next-achievement { padding: 20px; margin: 16px 0; border-left: 3px solid #e9b56d; background: linear-gradient(110deg, #75602c44, #153a34); }
 .next-achievement h3 { font: 400 27px Georgia, serif; margin: 8px 0; }

@@ -6,6 +6,7 @@ import type { JournalEntry } from '../gameplay/fishingSession.ts';
 import { evaluateAchievements } from '../progression/achievements.ts';
 import { achievementsContent, achievementsUnavailable } from './achievementsView.ts';
 import { GalleryView, LURE_LABELS, type GalleryDataSource } from './gallery.ts';
+import { creditsContent } from './creditsView.ts';
 
 export interface UIHandlers {
   readonly onPlay: () => void;
@@ -166,7 +167,10 @@ export class GameUI {
       button('Configurações', 'menu-settings', () => this.openPanel(this.panel, this.settingsContent(), this.menuMain)),
       button('Como jogar', 'menu-help', () => this.openPanel(this.panel, this.helpContent(), this.menuMain)),
       button('Diário', 'menu-journal', () => this.openPanel(this.panel, this.journalContent(), this.menuMain)),
-      button('Créditos', 'menu-credits', () => this.openPanel(this.panel, this.creditsContent(), this.menuMain)),
+      button('Créditos', 'menu-credits', () => {
+        this.openPanel(this.panel, creditsContent(this.credits), this.menuMain);
+        this.panel.classList.add('wide');
+      }),
     );
     const destination = el('aside', 'menu-destination');
     destination.append(el('span', 'menu-eyebrow', '01 / O SEU PRÓXIMO ARREMESSO'), el('h2', '', 'Lago Tropical'),
@@ -586,13 +590,4 @@ export class GameUI {
     return box;
   }
 
-  private creditsContent(): HTMLElement {
-    const box = el('div', 'credits');
-    box.dataset['testid'] = 'credits';
-    box.append(el('h2', '', 'Créditos'));
-    const pre = el('pre', 'credits-text', this.credits.trim() || 'Registro de licenças indisponível.');
-    pre.tabIndex = 0;
-    box.append(pre);
-    return box;
-  }
 }
