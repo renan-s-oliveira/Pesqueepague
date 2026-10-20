@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  base: '/Pesqueepague/',
   build: {
     target: 'es2022',
     sourcemap: true,
