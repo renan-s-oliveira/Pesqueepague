@@ -1,4 +1,7 @@
 import credits from '../../ASSETS_LICENSES.md?raw';
+import { getLake, type LakeId } from '../world/lakes.ts';
+import { LegendaryEntrance } from '../capture/legendaryEntrance.ts';
+import { randomLegendary } from '../fish/legendary.ts';
 import { deriveSeed, type GameConfig } from '../config/gameConfig.ts';
 import {
   browserStore,
@@ -120,9 +123,16 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   let lastCatchRecordId: string | null = null;
   let lastPhoto: { readonly id: string; readonly size: number } | null = null;
   let catches = 0;
+  let forceLegendary = false;
   const countCatches = (): number => session.journal.filter((e) => e.outcome === 'caught').length;
 
   const handlers = {
+    onCrank: (turns: number) => session.crank(turns),
+    onPayout: (on: boolean) => session.setPayout(on),
+    onVolumesChange: (volumes: SaveData['volumes']) => {
+      save = { ...save, volumes }; persist();
+      container.dispatchEvent(new CustomEvent('game-volumes', { detail: volumes }));
+    },
     onPlay: () => {
       session.restart();
       catches = countCatches();
@@ -147,7 +157,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
       input?.requestLock();
     },
     onSettingsChange: (settings: Settings) => applySettings(settings, true),
-    onResetSettings: () => applySettings(defaultSaveData().settings, true),
+    onResetSettings: () => applySettings({ ...defaultSaveData().settings, lakeId: session.activeLake }, true),
     onOpenTrophyRoom: () => {
       closeTrophyRoom();
       void (async (): Promise<void> => {
@@ -164,7 +174,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
     },
   };
 
-  ui = new GameUI(container, handlers, save.settings, credits, galleryData);
+  ui = new GameUI(container, handlers, save.settings, credits, galleryData, save.volumes);
   states.dispatch({ type: 'BOOTED' });
   ui.setLoading(0.1, 'Gerando terreno, água e vegetação…');
   await nextFrame();
@@ -175,7 +185,14 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
 
   const session = new FishingSession(states, new Rng(deriveSeed(config.seed, SESSION_SEED_SALT)), clock, {
     hourOfDay: () => lake.timeOfDay.hour,
+    initialLake: save.settings.lakeId ?? 'tropical',
+    legendaryRoll: () => {
+      if (import.meta.env.MODE === 'e2e' && forceLegendary) { forceLegendary = false; return true; }
+      return randomLegendary();
+    },
   });
+  const entrance = new LegendaryEntrance(container, lake.scene, lake.camera);
+  const offLegendary = session.onLegendary(() => entrance.start());
   const visuals = new FishingVisuals(lake.scene, lake.camera, (x, z, strength) =>
     lake.lake.addRipple(x, z, strength, elapsedNow),
   );
@@ -184,6 +201,9 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   lake.engine.renderer.compile(lake.scene, lake.camera);
 
   function applySettings(settings: Settings, save_: boolean): void {
+    const id = settings.lakeId ?? 'tropical';
+    if (session.activeLake !== id) session.setLake(id);
+    if (appliedLake !== id) { lake.setLake(id); appliedLake = id; }
     lake.setQualityPreset(settings.quality);
     session.setLure(settings.lureId);
     input?.setSensitivity(settings.cameraSensitivity);
@@ -195,6 +215,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   }
 
   const onAction = (action: GameAction): void => {
+    if (session.cinematicRemainingMs > 0 && action !== 'pause' && action !== 'resume') return;
     switch (action) {
       case 'beginCharge':
         session.beginCharge();
@@ -233,22 +254,25 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   };
 
   input = new InputController({
+    onCrank: handlers.onCrank,
+    onPayout: handlers.onPayout,
     surface: lake.canvas,
     getState: () => states.state,
     getContext: () => ({ charging: session.isCharging }),
     onAction,
-    onLook: (dy, dp) => lake.look.rotate(dy, dp),
+    onLook: (dy, dp) => { if (!session.cinematicRemainingMs) lake.look.rotate(dy, dp); },
     onPlayerAction: (snapshot, action) => {
       if (action.kind === 'reel' && states.state === 'REELING') session.setReeling(snapshot.reeling);
     },
   });
+  let appliedLake: LakeId | null = null;
   applySettings(save.settings, false);
 
   /** Estúdio da captura: o exemplar real em 3D sobre o jogo desfocado, ficha completa e foto. */
   const openCapture = (fish: CaughtFish): void => {
     presentation?.dispose();
     const isRecord = save.bestCatch === null || fish.individual.weightKg >= save.bestCatch.weightKg;
-    const panel = new CatchPanel(fish, DEFAULT_LOCATION_ID, isRecord);
+    const panel = new CatchPanel(fish, getLake(session.activeLake).locationId, isRecord);
     presentation = new CatchPresentation(container, fish, panel.root, {
       onContinue: () => handlers.onContinue(),
       onPhoto: async (blob) => {
@@ -285,7 +309,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
         weightKg: entry.weightKg,
         lengthCm: Math.round(lengthForWeightCm(species, entry.weightKg) * 10) / 10,
         timestamp: Date.now(),
-        locationId: DEFAULT_LOCATION_ID,
+        locationId: getLake(session.activeLake).locationId,
         lureId: save.settings.lureId,
         rarity: individualRarity(species, entry.weightKg),
         disposition: 'kept',
@@ -311,6 +335,9 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
     if (input) session.setControls(input.actions.snapshot);
     session.update();
     const state = states.state;
+    entrance.update(state === 'PAUSED' ? 0 : dt);
+    if (state === 'MENU') entrance.finish();
+    ui?.setCinematic(entrance.isPlaying || session.cinematicRemainingMs > 0);
     if (state === 'MENU') {
       // Câmera cinematográfica do menu sobre a mesma cena.
       lake.look.setPosition(EYE.x + Math.sin(elapsed * 0.07) * 1.5, EYE.y + 1.2, EYE.z + 4);
@@ -321,7 +348,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
       const last = session.journal.at(-1);
       caughtSpecies = last?.outcome === 'caught' ? last.speciesId : null;
     }
-    visuals.setRodVisible(state !== 'MENU');
+    visuals.setRodVisible(state !== 'MENU' && !entrance.isPlaying && !session.cinematicRemainingMs);
     const dist = session.lineDistanceM;
     const total = session.currentCast?.distanceM ?? 0;
     visuals.update(
@@ -345,6 +372,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
       progress: dist !== null && total > 0 ? 1 - dist / total : 0,
       catches,
       score: session.score,
+      fight: session.fightSnapshot,
     });
   });
 
@@ -354,6 +382,19 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
   lake.start();
   states.dispatch({ type: 'LOADED' });
   if (import.meta.env.MODE === 'e2e') {
+    setTimeout(() => {
+      const w = window as unknown as { __fp?: Record<string, unknown> };
+      if (w.__fp) {
+        w.__fp['forceLegendaryNextCast'] = () => { forceLegendary = true; };
+        w.__fp['activeLake'] = () => session.activeLake;
+        w.__fp['legendaryActive'] = () => session.legendaryActive;
+        w.__fp['crank'] = (turns: number) => session.crank(turns);
+        w.__fp['payout'] = (on: boolean) => session.setPayout(on);
+        w.__fp['lineOut'] = () => session.lineDistanceM;
+        w.__fp['currentSpecies'] = () => session.currentFish?.species.id;
+        w.__fp['legendaryVisual'] = () => ({ visible: lake.scene.getObjectByName('legendary-shadow')?.visible, shapes: lake.scene.getObjectByName('legendary-shadow')?.children.length });
+      }
+    }, 0);
     /** Captura de amostra determinística: leva o teste direto ao estúdio, sem pescar. */
     const sampleCaughtFish = (): CaughtFish => {
       const species = getSpecies('tilapia');
@@ -404,6 +445,7 @@ export async function bootstrap(container: HTMLElement, config: GameConfig): Pro
     session,
     scene: lake,
     dispose(): void {
+      offLegendary(); entrance.dispose();
       offFrame();
       offCatch();
       offOutcome();

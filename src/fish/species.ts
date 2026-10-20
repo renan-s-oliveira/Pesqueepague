@@ -1,9 +1,11 @@
 import type { Rng } from '../utils/rng.ts';
+import { EXTRA_FISH, extraSpecies, type ExtraSpeciesId, type FishFamily } from './catalogue.ts';
+import type { LakeId } from '../world/lakes.ts';
 
-export const SPECIES_IDS = ['lambari', 'tilapia', 'tucunare'] as const;
-export type SpeciesId = (typeof SPECIES_IDS)[number];
+export type SpeciesId = 'lambari' | 'tilapia' | 'tucunare' | ExtraSpeciesId | 'guardiao-abissal';
+export const SPECIES_IDS: readonly SpeciesId[] = ['lambari', 'tilapia', 'tucunare', ...EXTRA_FISH.map((row) => row[0]), 'guardiao-abissal'];
 
-/** 'legendary' é só de indivíduo troféu (topo de peso da espécie); nenhuma espécie tem essa raridade base. */
+/** 'legendary' identifica indivíduos troféu e a entidade secreta; não é raridade base do catálogo. */
 export const RARITIES = ['common', 'uncommon', 'rare', 'legendary'] as const;
 export type Rarity = (typeof RARITIES)[number];
 export type SpeciesRarity = Exclude<Rarity, 'legendary'>;
@@ -53,6 +55,9 @@ export interface ResistanceProfile {
 }
 
 export interface FishSpecies {
+  readonly lakeId?: LakeId;
+  readonly family?: FishFamily;
+  readonly secret?: boolean;
   readonly id: SpeciesId;
   readonly name: string;
   readonly scientificName: string;
@@ -158,6 +163,16 @@ export const SPECIES: readonly FishSpecies[] = [
     biteChance: 0.35,
     resistance: { basePull: 0.45, burstPull: 0.8, burstChancePerSec: 0.7, burstMs: 700 },
   },
+  ...extraSpecies(),
+  {
+    ...extraSpecies().find((s) => s.id === 'pirarucu')!,
+    id: 'guardiao-abissal', name: 'Guardião Abissal', scientificName: 'Entidade lendária do Igapó',
+    lakeId: 'igapo', secret: true, family: 'ancient', rarity: 'rare',
+    habitat: 'Uma sombra nas profundezas do Lago do Igapó.',
+    curiosities: ['Uma chance em 1 bilhão de arremessos no Igapó.', 'Sua entrada revela somente uma sombra.'],
+    minWeightKg: 60, maxWeightKg: 99, difficulty: .98, spawnWeight: 1, biteChance: 1,
+    resistance: { basePull: .85, burstPull: 1.9, burstChancePerSec: .5, burstMs: 1400 },
+  },
 ];
 
 export function isSpeciesId(value: unknown): value is SpeciesId {
@@ -254,16 +269,20 @@ export function trophyWeightKg(species: FishSpecies): number {
 }
 
 export function individualRarity(species: FishSpecies, weightKg: number): Rarity {
+  if (species.secret) return 'legendary';
   return weightKg >= trophyWeightKg(species) ? 'legendary' : species.rarity;
 }
 
 /** Probabilidade de a espécie ser sorteada, pelo peso relativo na tabela. */
 export function spawnProbability(id: SpeciesId, table: readonly FishSpecies[] = SPECIES): number {
+  if (getSpecies(id, table).secret) return 0;
+  table = table.filter((s) => !s.secret);
   const total = table.reduce((sum, s) => sum + s.spawnWeight, 0);
   return getSpecies(id, table).spawnWeight / total;
 }
 
 export function pickSpecies(rng: Rng, table: readonly FishSpecies[] = SPECIES): FishSpecies {
+  table = table.filter((s) => !s.secret);
   const total = table.reduce((sum, s) => sum + s.spawnWeight, 0);
   const r = rng.next() * total;
   let acc = 0;

@@ -20,7 +20,7 @@ export interface InventoryRules {
 export const DEFAULT_INVENTORY_RULES: InventoryRules = {
   capacity: 20,
   dailyLimitPerSpecies: 5,
-  minKeepLengthCm: { lambari: 12, tilapia: 30, tucunare: 40 },
+  minKeepLengthCm: { ...Object.fromEntries(SPECIES.map((s) => [s.id, 15])) as Record<SpeciesId, number>, lambari: 12, tilapia: 30, tucunare: 40 },
 };
 
 export type KeepRefusal = 'protected_species' | 'undersized' | 'daily_limit' | 'storage_full';

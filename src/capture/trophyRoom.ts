@@ -60,6 +60,8 @@ export class TrophyRoom {
   private readonly scene = new Scene();
   private readonly camera: PerspectiveCamera;
   private readonly trophies: { group: Group; model: FishModel; record: CatchRecord }[] = [];
+  private extraTrophy: { group: Group; model: FishModel; record: CatchRecord } | null = null;
+  private readonly records: readonly CatchRecord[];
   private readonly controls: OrbitControls;
   private readonly selection = el('p', 'trophy-selection', 'Selecione um recorde para observar de perto.');
   private readonly previousFocus = document.activeElement;
@@ -93,6 +95,7 @@ export class TrophyRoom {
     records: readonly CatchRecord[],
     private readonly handlers: TrophyRoomHandlers,
   ) {
+    this.records = records;
     this.reducedMotion = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     this.root = el('section', 'trophy-room');
@@ -270,6 +273,8 @@ export class TrophyRoom {
   }
 
   private overview(): void {
+    this.clearExtra();
+    for (const trophy of this.trophies) trophy.group.visible = true;
     this.camera.position.set(0, 1.8, 5.5);
     this.controls.target.set(0, 1, 0);
     this.controls.update();
@@ -278,8 +283,18 @@ export class TrophyRoom {
   }
 
   private selectTrophy(id: string): void {
-    const trophy = this.trophies.find((t) => t.record.id === id);
+    this.clearExtra();
+    let trophy = this.trophies.find((t) => t.record.id === id);
+    if (!trophy) {
+      const record = this.records.find((r) => r.id === id);
+      if (!record) return;
+      const model = new FishModel(record.speciesId, { seed: seedFromId(record.id), lengthM: Math.min(.9, Math.max(.12, record.lengthCm / 100)), color: { hueShiftDeg: 0, lightnessShift: 0, spotSeed: seedFromId(`${record.id}:${record.speciesId}`) } });
+      model.setWetness(0);
+      const group = new Group(); group.position.set(0, 1.15, 0); group.add(model.root); this.scene.add(group);
+      this.extraTrophy = { group, model, record }; trophy = this.extraTrophy;
+    }
     if (!trophy) return;
+    for (const item of this.trophies) item.group.visible = item === trophy;
     const { record, group } = trophy;
     this.controls.target.copy(group.position);
     const size = Math.min(0.9, Math.max(0.12, record.lengthCm / 100));
@@ -287,6 +302,10 @@ export class TrophyRoom {
     this.controls.update();
     this.selection.textContent = `${getSpecies(record.speciesId).name} · ${formatKg(record.weightKg)} · ${record.lengthCm.toFixed(1).replace('.', ',')} cm · ${new Date(record.timestamp).toLocaleDateString('pt-BR')} · ${record.disposition === 'released' ? 'De volta ao lago' : 'Guardado'}`;
     for (const button of this.root.querySelectorAll<HTMLButtonElement>('.trophy-pick')) button.setAttribute('aria-pressed', String(button.dataset['recordId'] === id));
+  }
+
+  private clearExtra(): void {
+    this.extraTrophy?.model.dispose(); this.extraTrophy?.group.removeFromParent(); this.extraTrophy = null;
   }
 
   private readonly frame = (now: number): void => {
@@ -297,6 +316,7 @@ export class TrophyRoom {
     this.controls.update();
     if (!this.reducedMotion && this.autoSpin) {
       for (const t of this.trophies) t.group.rotation.y += dt * 0.0006;
+      if (this.extraTrophy) this.extraTrophy.group.rotation.y += dt * .0006;
     }
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.frame);
@@ -308,6 +328,7 @@ export class TrophyRoom {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('keydown', this.onKeyDown, true);
     this.controls.dispose();
+    this.clearExtra();
     for (const t of this.trophies) t.model.dispose();
     this.scene.traverse((object) => {
       if (object instanceof Mesh && this.materials.includes(object.material as MeshStandardMaterial)) object.geometry.dispose();

@@ -186,7 +186,7 @@ test('coleção em tela pequena: atlas vazio, troféus e retorno pelo teclado', 
   await page.getByTestId('menu-gallery').click();
   await expect(page.getByTestId('gallery-empty')).toBeVisible();
   await page.getByText('Atlas do lago · descubra suas espécies', { exact: true }).click();
-  await page.locator('.atlas-species').filter({ hasText: 'Tucunaré' }).click();
+  await page.locator('.atlas-species').filter({ has: page.getByText('Tucunaré', { exact: true }) }).click();
   const detail = page.getByTestId('gallery-detail');
   await expect(detail).toContainText('Iscas favoritas');
   await page.screenshot({ path: test.info().outputPath('atlas-mobile.png') });

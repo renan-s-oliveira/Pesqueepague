@@ -1,14 +1,17 @@
 import type { GameState } from '../core/stateMachine.ts';
 import { installWeighingTestHooks } from '../capture/catchDecision.ts';
 import { defaultSaveData, QUALITY_LEVELS, type BestCatch, type Quality, type Settings, type Volumes } from '../config/persistence.ts';
-import { getSpecies, LURE_IDS, SPECIES, type LureId } from '../fish/species.ts';
+import { getSpecies, LURE_IDS, type LureId } from '../fish/species.ts';
 import type { JournalEntry } from '../gameplay/fishingSession.ts';
 import { evaluateAchievements } from '../progression/achievements.ts';
 import { achievementsContent, achievementsUnavailable } from './achievementsView.ts';
 import { GalleryView, LURE_LABELS, type GalleryDataSource } from './gallery.ts';
 import { creditsContent } from './creditsView.ts';
+import { LAKES, getLake, lakeSpecies } from '../world/lakes.ts';
 
 export interface UIHandlers {
+  readonly onCrank?: (turns: number) => void;
+  readonly onPayout?: (on: boolean) => void;
   readonly onPlay: () => void;
   readonly onResume: () => void;
   readonly onQuitToMenu: () => void;
@@ -21,11 +24,7 @@ export interface UIHandlers {
 }
 
 /** Cenários do menu: só o lago tropical existe; os outros aparecem desabilitados como 'em breve'. */
-const SCENARIOS = [
-  { id: 'lago-tropical', name: 'Lago Tropical', available: true },
-  { id: 'rio-da-serra', name: 'Rio da Serra', available: false },
-  { id: 'mar-aberto', name: 'Mar Aberto', available: false },
-] as const;
+const SCENARIOS = LAKES;
 
 export interface HudSnapshot {
   readonly state: GameState;
@@ -60,7 +59,7 @@ const HINTS: Partial<Record<GameState, string>> = {
   CASTING: 'A isca está no ar…',
   WAITING: 'Espere a boia afundar. Clique para recolher a linha sem peixe.',
   HOOKED: 'Mordeu! Clique agora para fisgar.',
-  REELING: 'Segure para recolher. Solte quando a tensão ficar no vermelho.',
+  REELING: 'Gire a manivela ou role o mouse para recolher. E libera linha. R recolhe continuamente.',
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] {
@@ -125,6 +124,7 @@ export class GameUI {
   private readonly pause = el('section', 'screen pause');
   private readonly pausePanel = el('div', 'panel');
   private readonly crosshair = el('div', 'crosshair');
+  private readonly baitcaster = el('div', 'baitcaster');
   private settings: Settings;
   private volumes: Volumes;
   private gallery: GalleryView | null = null;
@@ -211,6 +211,7 @@ export class GameUI {
     this.fight.hidden = true;
     this.direction.root.hidden = true;
     this.hud.append(
+      this.baitcaster,
       this.crosshair,
       this.stats,
       this.power.root,
@@ -222,6 +223,24 @@ export class GameUI {
       this.hint,
       this.help,
     );
+    const crank = button('↻', 'reel-crank', () => h.onCrank?.(0.4), 'reel-crank');
+    crank.setAttribute('aria-label', 'Girar a manivela da carretilha');
+    let angle: number | null = null;
+    let rotation = 0;
+    const pointerAngle = (event: PointerEvent): number => { const rect = crank.getBoundingClientRect(); return Math.atan2(event.clientY - rect.top - rect.height / 2, event.clientX - rect.left - rect.width / 2); };
+    crank.addEventListener('pointerdown', (event) => { crank.setPointerCapture(event.pointerId); angle = pointerAngle(event); });
+    crank.addEventListener('pointermove', (event) => {
+      if (angle === null) return;
+      const next = pointerAngle(event);
+      const delta = Math.atan2(Math.sin(next - angle), Math.cos(next - angle));
+      angle = next;
+      if (delta > 0) { rotation += delta; crank.style.transform = `rotate(${rotation}rad)`; h.onCrank?.(delta / (Math.PI * 2)); }
+    });
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) crank.addEventListener(event, () => { angle = null; });
+    const release = button('Liberar linha · E', 'reel-payout', () => {}, 'ui-btn compact');
+    release.addEventListener('pointerdown', (event) => { release.setPointerCapture(event.pointerId); h.onPayout?.(true); });
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture', 'blur']) release.addEventListener(event, () => h.onPayout?.(false));
+    this.baitcaster.append(el('span', 'menu-eyebrow', 'CARRETILHA'), crank, el('span', 'note', 'C libera o cursor · Gire ou role para cima'), release);
 
     this.result.setAttribute('role', 'dialog');
     this.result.setAttribute('aria-modal', 'true');
@@ -245,6 +264,8 @@ export class GameUI {
     this.loadingText.textContent = text;
   }
 
+  setCinematic(on: boolean): void { this.root.classList.toggle('cinematic', on); }
+
   setJournal(journal: readonly JournalEntry[], best: BestCatch | null): void {
     this.journal = journal;
     this.best = best;
@@ -263,6 +284,13 @@ export class GameUI {
 
   setSettings(settings: Settings): void {
     this.settings = settings;
+    const destination = getLake(settings.lakeId ?? 'tropical');
+    const card = this.menuMain.querySelector('.menu-destination');
+    const title = card?.querySelector('h2');
+    if (title) title.textContent = destination.name;
+    const paragraphs = card?.querySelectorAll('p');
+    if (paragraphs?.[0]) paragraphs[0].textContent = destination.subtitle;
+    if (paragraphs?.[1]) paragraphs[1].textContent = destination.description;
     if (!settings.showHints) this.hint.hidden = true;
   }
 
@@ -309,6 +337,7 @@ export class GameUI {
     this.progress.root.hidden = s.state !== 'REELING';
     setMeter(this.progress, s.progress);
     this.fight.hidden = s.state !== 'REELING';
+    this.baitcaster.hidden = s.state !== 'REELING';
     if (s.state === 'REELING') this.updateFight(s.fight);
     this.biteAlert.hidden = s.state !== 'HOOKED';
     const statsText = `Capturas: ${s.catches} · Pontos: ${s.score}`;
@@ -418,20 +447,17 @@ export class GameUI {
     box.dataset['testid'] = 'scenario-list';
     box.append(el('h2', '', 'Selecionar cenário'));
     for (const sc of SCENARIOS) {
-      if (sc.available) {
-        const b = button(`${sc.name} — cenário atual`, `scenario-${sc.id}`, () => this.closePanel(this.panel, this.menuMain));
-        b.setAttribute('aria-pressed', 'true');
-        b.classList.add('active');
-        box.append(b);
-      } else {
-        const b = el('button', 'ui-btn', `${sc.name} — em breve`);
-        b.type = 'button';
-        b.disabled = true;
-        b.dataset['testid'] = `scenario-${sc.id}`;
-        box.append(b);
-      }
+      const card = el('article', `lake-card lake-${sc.id}`);
+      const selected = (this.settings.lakeId ?? 'tropical') === sc.id;
+      const b = button(selected ? 'Lago selecionado ✓' : 'Explorar este lago →', `scenario-${sc.id}`, () => {
+        this.emitSettings({ ...this.settings, lakeId: sc.id });
+        this.closePanel(this.panel, this.menuMain);
+      });
+      b.setAttribute('aria-pressed', String(selected));
+      card.append(el('p', 'menu-eyebrow', `${lakeSpecies(sc.id).length} ESPÉCIES EXCLUSIVAS`), el('h3', '', sc.name), el('p', '', sc.subtitle), el('p', 'note', sc.description), b);
+      box.append(card);
     }
-    box.append(el('p', 'note', 'Novos cenários chegam em atualizações futuras; seu progresso vale em todos.'));
+    box.append(el('p', 'note', 'Cada espécie pertence a um único lago. Seu álbum reúne as capturas das três expedições.'));
     return box;
   }
 
@@ -452,7 +478,7 @@ export class GameUI {
     const prefNote = el('p', 'note');
     prefNote.dataset['testid'] = 'equipment-preference';
     const updateNote = (id: LureId): void => {
-      const fans = SPECIES.filter((s) => s.preferredLures.includes(id)).map((s) => s.name);
+      const fans = lakeSpecies(this.settings.lakeId ?? 'tropical').filter((s) => s.preferredLures.includes(id)).map((s) => s.name);
       prefNote.textContent = fans.length > 0 ? `Preferida por: ${fans.join(', ')}.` : 'Nenhuma espécie deste lago prefere essa isca.';
     };
     updateNote(this.settings.lureId);
@@ -474,7 +500,8 @@ export class GameUI {
       'Mova o mouse para olhar em volta (clique no lago para travar o cursor).',
       'Segure o botão esquerdo ou Espaço para carregar a força e solte para arremessar.',
       'Quando a boia afundar e aparecer “Mordeu!”, clique para fisgar.',
-      'Segure para recolher a linha; solte quando a tensão ficar no vermelho para ela não arrebentar.',
+      'Gire a manivela na tela ou role o mouse para recolher. R (ou botão esquerdo) recolhe continuamente.',
+      'Segure E ou Liberar linha para soltar o carretel e aliviar a tensão. Solte para frear novamente.',
       'ESC pausa o jogo. H mostra ou esconde esta ajuda. F3 mostra o painel de diagnóstico.',
     ]) {
       list.append(el('li', '', line));

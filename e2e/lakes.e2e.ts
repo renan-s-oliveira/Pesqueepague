@@ -1,0 +1,58 @@
+import { test, expect } from '@playwright/test';
+import { openGame, cast, skipToBite, waitState } from './helpers.ts';
+
+test('lagos exclusivos, seleção persistida e encontro lendário somente por sombra', async ({ page }) => {
+  test.setTimeout(180000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await openGame(page);
+  await page.getByTestId('menu-scenario').click();
+  await expect(page.locator('.lake-card')).toHaveCount(3);
+  await page.screenshot({ path: test.info().outputPath('lakes.png') });
+  await page.getByTestId('scenario-serra').click();
+  await expect(page.locator('.menu-destination')).toContainText('Lago da Serra');
+  await page.screenshot({ path: test.info().outputPath('serra.png') });
+  await page.reload();
+  await expect(page.getByTestId('menu-play')).toBeVisible({ timeout: 60000 });
+  await expect(page.locator('.menu-destination')).toContainText('Lago da Serra');
+  await page.getByTestId('menu-scenario').click();
+  await page.getByTestId('scenario-igapo').click();
+  await expect(page.locator('.menu-destination')).toContainText('Lago do Igapó');
+  await page.screenshot({ path: test.info().outputPath('igapo.png') });
+  await expect.poll(() => page.evaluate(() => typeof (window as any).__fp.forceLegendaryNextCast)).toBe('function');
+  await page.evaluate(() => (window as any).__fp.forceLegendaryNextCast());
+  await page.getByTestId('menu-play').click();
+  await cast(page, 200);
+  await expect(page.getByTestId('legendary-entrance')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__fp.legendaryMusic())).toBe(true);
+  await page.evaluate(() => (window as any).__fp.freeze(true));
+  await expect.poll(() => page.evaluate(() => (window as any).__fp.currentSpecies())).toBe('guardiao-abissal');
+  await expect.poll(() => page.evaluate(() => (window as any).__fp.legendaryVisual())).toEqual({ visible: true, shapes: 1 });
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: test.info().outputPath('legendary-shadow.png') });
+  await page.keyboard.press('Escape');
+  await waitState(page, 'PAUSED');
+  await page.getByTestId('pause-quit').click();
+  await expect(page.getByTestId('legendary-entrance')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => (window as any).__fp.legendaryMusic())).toBe(false);
+  expect(errors).toEqual([]);
+});
+
+test('carretilha: roda do mouse e liberação de linha funcionam durante a briga', async ({ page }) => {
+  test.setTimeout(120000);
+  await openGame(page);
+  await page.getByTestId('menu-play').click();
+  await cast(page, 300); await skipToBite(page); await waitState(page, 'HOOKED');
+  await page.mouse.down(); await page.mouse.up(); await waitState(page, 'REELING');
+  await expect(page.getByTestId('reel-crank')).toBeVisible();
+  const before = await page.evaluate(() => (window as any).__fp.lineOut());
+  await page.mouse.wheel(0, -160);
+  await page.evaluate(() => (window as any).__fp.advance(200));
+  await expect.poll(() => page.evaluate(() => (window as any).__fp.lineOut())).toBeLessThan(before);
+  const wound = await page.evaluate(() => (window as any).__fp.lineOut());
+  await page.keyboard.down('KeyE');
+  await page.evaluate(() => (window as any).__fp.advance(300));
+  await expect.poll(() => page.evaluate(() => (window as any).__fp.lineOut())).toBeGreaterThan(wound);
+  await page.keyboard.up('KeyE');
+  await page.screenshot({ path: test.info().outputPath('baitcaster.png') });
+});

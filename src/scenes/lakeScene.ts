@@ -10,6 +10,8 @@ import {
 } from '../engine/GraphicsQualityManager.ts';
 import { EngineRenderer } from '../engine/renderer.ts';
 import { Rng } from '../utils/rng.ts';
+import { getLake, type LakeId } from '../world/lakes.ts';
+import { LakeBiomes } from '../world/biomes.ts';
 import { disposeObject3D } from '../world/dispose.ts';
 import { Lake } from '../world/lake.ts';
 import { LAKE, PIER } from '../world/layout.ts';
@@ -58,6 +60,8 @@ const AUTO_MIN_RESOLUTION_SCALE = 0.7;
 
 /** Monta o lago completo e roda o loop; o loop de render não aloca objetos por frame. */
 export class LakeScene {
+  private biomeId: LakeId = 'tropical';
+  private readonly biomes: LakeBiomes;
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(60, 1, 0.1, 600);
   readonly engine: EngineRenderer;
@@ -110,6 +114,7 @@ export class LakeScene {
 
   constructor(container: HTMLElement, options: LakeSceneOptions) {
     this.rng = new Rng(options.seed);
+    this.biomes = new LakeBiomes(options.seed);
     this.quality = new GraphicsQualityManager({ minResolutionScale: AUTO_MIN_RESOLUTION_SCALE, ...options.quality });
     this.engine = new EngineRenderer(container, this.camera, { maxPixelRatio: options.maxPixelRatio });
     this.engine.attachScene(this.scene, this.quality.settings.postProcessing);
@@ -151,6 +156,7 @@ export class LakeScene {
       maxZ: PIER.zShore + 10,
     });
     this.scene.add(
+      this.biomes.group,
       this.sky.mesh,
       this.lighting.group,
       terrain.mesh,
@@ -177,6 +183,19 @@ export class LakeScene {
   setTime(hour: number): void {
     this.timeOfDay.setTime(hour);
     this.updateAtmosphere(true);
+  }
+
+  setLake(id: LakeId): void {
+    this.biomeId = id;
+    this.biomes.setLake(id);
+    this.vegetation.group.visible = id !== 'serra';
+    const biome = getLake(id);
+    const uniforms = this.lake.mesh.material.uniforms;
+    (uniforms['uDeep']!.value as Color).set(biome.water).multiplyScalar(.5);
+    (uniforms['uShallow']!.value as Color).set(biome.water);
+    (uniforms['uSand']!.value as Color).set(biome.terrain);
+    this.setTime(biome.hour);
+    this.setWeather(id === 'igapo' ? 'cloudy' : 'clear', true);
   }
 
   setWeather(kind: WeatherKind, immediate = false): void {
@@ -340,6 +359,7 @@ export class LakeScene {
     this.sky.setAtmosphere(this.skyState);
 
     this.fog.color.setRGB(p.fog[0], p.fog[1], p.fog[2], SRGBColorSpace).lerp(this.overcast, o * 0.5);
+    if (this.biomeId !== 'tropical') this.fog.color.lerp(new Color(getLake(this.biomeId).fog), .5);
     const range = fogRange(this.weather.fogDensity, p.daylight);
     this.fog.near = range.near;
     this.fog.far = range.far;

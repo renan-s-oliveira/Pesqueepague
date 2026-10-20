@@ -1,5 +1,8 @@
 import type { GameEvent, GameStateMachine, GameState } from '../core/stateMachine.ts';
 import type { Clock } from '../utils/clock.ts';
+import { getSpecies } from '../fish/species.ts';
+import { lakeSpecies, type LakeId } from '../world/lakes.ts';
+import { LEGENDARY_INTRO_MS, randomLegendary } from '../fish/legendary.ts';
 import type { Rng } from '../utils/rng.ts';
 import {
   castPower,
@@ -34,7 +37,6 @@ import {
   hookWindowMs,
   LURE_IDS,
   pickSpecies,
-  SPECIES,
   validateSpeciesTable,
   type FishSpecies,
   type LureId,
@@ -80,6 +82,8 @@ export interface SessionControls {
 }
 
 export interface SessionConfig {
+  readonly initialLake?: LakeId;
+  readonly legendaryRoll?: () => boolean;
   readonly cast: CastConfig;
   readonly line: LineSpec;
   readonly dragReel: DragReelConfig;
@@ -97,7 +101,7 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   line: LINE_SPECS.mono020,
   dragReel: DEFAULT_DRAG_REEL_CONFIG,
   bite: DEFAULT_BITE_CONFIG,
-  species: SPECIES,
+  species: lakeSpecies('tropical'),
   lureId: 'worm',
   hourOfDay: () => 12,
   stepMs: 20,
@@ -124,6 +128,13 @@ const fail = (reason: string): ActionResult => ({ ok: false, reason });
 
 /** Liga as regras de pesca à GameStateMachine, de CASTING até CAUGHT/ESCAPED. */
 export class FishingSession {
+  private lakeId: LakeId = 'tropical';
+  private speciesTable: readonly FishSpecies[];
+  private mythicCast = false;
+  private introMs = 0;
+  private readonly legendaryListeners = new Set<() => void>();
+  private payout = false;
+  private crankMs = 0;
   private readonly cfg: SessionConfig;
   private gameTime = 0;
   private accumulator = 0;
@@ -157,6 +168,8 @@ export class FishingSession {
     config: Partial<SessionConfig> = {},
   ) {
     this.cfg = { ...DEFAULT_SESSION_CONFIG, ...config };
+    this.lakeId = config.initialLake ?? 'tropical';
+    this.speciesTable = config.species ?? lakeSpecies(this.lakeId);
     validateCastConfig(this.cfg.cast);
     validateLineSpec(this.cfg.line);
     validateDragReelConfig(this.cfg.dragReel);
@@ -176,6 +189,23 @@ export class FishingSession {
 
   get state(): GameState {
     return this.machine.state;
+  }
+
+  get activeLake(): LakeId { return this.lakeId; }
+  get legendaryActive(): boolean { return this.mythicCast && !this.resolved; }
+  get cinematicRemainingMs(): number { return this.introMs; }
+  onLegendary(listener: () => void): () => void { this.legendaryListeners.add(listener); return () => { this.legendaryListeners.delete(listener); }; }
+  setLake(id: LakeId): ActionResult {
+    if (this.state !== 'MENU') return fail('troque de lago no menu');
+    this.lakeId = id;
+    this.speciesTable = lakeSpecies(id);
+    this.clearCast();
+    return OK;
+  }
+  setPayout(on: boolean): void { this.payout = on; }
+  crank(turns: number): void {
+    if (!Number.isFinite(turns) || turns <= 0 || this.introMs > 0) return;
+    this.crankMs = Math.min(500, this.crankMs + turns * 350);
   }
 
   get score(): number {
@@ -218,6 +248,10 @@ export class FishingSession {
 
   get controls(): SessionControls {
     return this.controlsState;
+  }
+
+  get fightSnapshot() {
+    return { distanceM: this.lineDistanceM, speedMps: this.payout ? -2.4 : (this.reeling || this.crankMs > 0) ? this.controlsState.reelSpeed * this.cfg.dragReel.maxRetrieveMps : 0, dragN: this.payout ? 0 : this.dragN, stamina: this.stamina };
   }
 
   /** Drag aplicado no molinete, em newtons. */
@@ -268,6 +302,8 @@ export class FishingSession {
     if (!result.ok) return result;
     this.castSerial++;
     this.castNumber++;
+    // Uma única tentativa por arremesso, nunca por frame ou por nova beliscada.
+    this.mythicCast = this.lakeId === 'igapo' && (this.cfg.legendaryRoll ?? randomLegendary)();
     this.flight = { cast, remainingMs: cast.flightMs };
     this.lure = null;
     this.resolved = false;
@@ -318,6 +354,7 @@ export class FishingSession {
 
   /** Recolhe a isca sem peixe, de volta a IDLE. */
   retrieve(): ActionResult {
+    if (this.introMs > 0) return fail('aguarde a entrada da sombra');
     const result = this.dispatch({ type: 'REEL_IN' });
     if (result.ok) this.clearCast();
     return result;
@@ -393,6 +430,10 @@ export class FishingSession {
   }
 
   private tickSimulation(dtMs: number): void {
+    if (this.introMs > 0 && this.state !== 'MENU') {
+      this.introMs = Math.max(0, this.introMs - dtMs);
+      return;
+    }
     switch (this.state) {
       case 'CASTING':
         if (!this.flight) return;
@@ -417,10 +458,14 @@ export class FishingSession {
         // A tensão freia o peixe: em linha frouxa ele arranca; esticada, cede e a linha relaxa.
         const pullMps = (this.burstLeftMs > 0 ? profile.burstPull : profile.basePull) * PULL_TO_MPS;
         const fishSpeedMps = pullMps * (1 - tensionFraction) - LINE_RECOVERY_MPS * tensionFraction;
+        const cranking = this.crankMs > 0;
+        this.crankMs = Math.max(0, this.crankMs - dtMs);
+        this.line.setDrag(this.payout ? 0 : this.dragN);
         const status = this.line.update(dtMs, {
-          retrieve: this.reeling ? this.controlsState.reelSpeed : 0,
+          retrieve: !this.payout && (this.reeling || cranking) ? this.controlsState.reelSpeed : 0,
           fishSpeedMps,
         });
+        if (this.payout) this.line.payOut(dtMs / 1000 * 2.4);
         const drain = SPECIES_BEHAVIOR[this.fish.species.id].staminaDrainPerSec * (dtMs / 1000);
         const delta = tensionFraction < SLACK_TENSION_FRACTION ? drain * 0.5 : -drain * tensionFraction;
         this.stamina = Math.min(1, Math.max(0, this.stamina + delta));
@@ -450,11 +495,15 @@ export class FishingSession {
   }
 
   private spawnFish(): void {
-    const species = pickSpecies(this.rng, this.cfg.species);
+    const species = this.mythicCast ? getSpecies('guardiao-abissal') : pickSpecies(this.rng, this.speciesTable);
     const individual = spawnIndividual(this.rng, species);
     const plan = planBite(this.rng, species, this.cfg.bite);
     this.individual = individual;
     this.fish = FishBrain.fromIndividual(species, individual, plan, hookWindowMs(species, this.cfg.bite.hookWindowBaseMs));
+    if (this.mythicCast) {
+      this.introMs = LEGENDARY_INTRO_MS;
+      for (const listener of this.legendaryListeners) listener();
+    }
   }
 
   /** Fecha o arremesso uma única vez: impede captura ou fuga dupla. */
@@ -492,6 +541,10 @@ export class FishingSession {
   }
 
   private clearCast(): void {
+    this.mythicCast = false;
+    this.introMs = 0;
+    this.payout = false;
+    this.crankMs = 0;
     this.flight = null;
     this.lure = null;
     this.fish = null;

@@ -107,12 +107,24 @@ bootstrap(container, config).then((game) => {
   const audio = new AudioManager({ seed: config.seed, volumes: loadSave(browserStore()).data.volumes });
   audio.attachUnlock(window);
   const offAudio = wireGameAudio(game.states, audio);
+  const offLegendaryAudio = game.session.onLegendary(() => audio.startLoop('legendaryMusic'));
+  const offEncounterAudio = game.states.onTransition((_from, to) => {
+    if (to === 'MENU' || to === 'CAUGHT' || to === 'ESCAPED' || to === 'IDLE') audio.stopLoop('legendaryMusic');
+  });
+  const updateVolumes = (event: Event): void => audio.setVolumes((event as CustomEvent).detail);
+  container.addEventListener('game-volumes', updateVolumes);
   if (game.states.state === 'MENU') audio.setMenuMusic(true);
-  if (E2E) exposeTestHooks(game, manualClock);
+  if (E2E) {
+    exposeTestHooks(game, manualClock);
+    Object.assign((window as unknown as { __fp: object }).__fp, { legendaryMusic: () => audio.isLoopPlaying('legendaryMusic') });
+  }
   window.addEventListener(
     'pagehide',
     () => {
       offAudio();
+      offLegendaryAudio();
+      offEncounterAudio();
+      container.removeEventListener('game-volumes', updateVolumes);
       void audio.dispose();
       game.dispose();
     },

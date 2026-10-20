@@ -358,7 +358,7 @@ export class AudioManager {
     }
     for (const id of this.wantedLoops) {
       if (this.loops.has(id)) continue;
-      const bus = id === 'menuMusic' ? this.buses.music : this.buses.sfx;
+      const bus = id === 'menuMusic' || id === 'legendaryMusic' ? this.buses.music : this.buses.sfx;
       this.loops.set(id, this.startLoopVoice(id, bus));
     }
   }

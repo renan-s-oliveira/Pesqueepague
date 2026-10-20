@@ -1,5 +1,6 @@
 import { getSpecies, type LureId, type Rarity } from '../fish/species.ts';
 import type { CaughtFish } from '../gameplay/fishingSession.ts';
+import { LAKES } from '../world/lakes.ts';
 
 export const LURE_LABELS: Readonly<Record<LureId, string>> = {
   worm: 'Minhoca',
@@ -19,6 +20,7 @@ export const RARITY_LABELS: Readonly<Record<Rarity, string>> = {
 };
 
 const LOCATION_LABELS: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(LAKES.map((lake) => [lake.locationId, lake.name])),
   'lago-principal': 'Lago principal',
 };
 

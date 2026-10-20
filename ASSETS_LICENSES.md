@@ -8,6 +8,9 @@ Se o arquivo faltar, o jogo usa a versão procedural.
 
 | Asset | Tipo | Origem | Autor | Licença | URL |
 |---|---|---|---|---|---|
+| Pinheiros da serra e raízes do igapó | Geometria procedural (`src/world/biomes.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Sombra e entrada do Guardião Abissal | Silhueta vetorial e animação procedural (`src/capture/legendaryEntrance.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
+| Trilha do encontro lendário | Música procedural: percussão, baixo e cordas (`src/audio/synth.ts`) | Original, composta e sintetizada em código | Equipe Pesque e Pague | Original do projeto | — |
 | Modelo dos peixes (corpo em loft com ossos, nadadeiras, olhos com íris e córnea, LOD de 2 níveis) | Geometria procedural (`src/fish/visual/fishModel.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
 | Pele dos peixes (albedo com escamas e manchas por espécie, normal e rugosidade) | DataTexture procedural (`src/fish/visual/fishTextures.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |
 | Terreno (bacia do lago, margem irregular, morros ao fundo e montanhas) | Geometria procedural (`src/world/terrain.ts`) | Original, gerado em código | Equipe Pesque e Pague | Original do projeto | — |

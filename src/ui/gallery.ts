@@ -1,5 +1,8 @@
 import { getSpecies, RARITIES, SPECIES, type LureId, type Rarity, type SpeciesId } from '../fish/species.ts';
 import type { CatchRecord } from '../progression/types.ts';
+import { LAKES, getLake, speciesLake } from '../world/lakes.ts';
+
+const VISIBLE_SPECIES = SPECIES.filter((s) => !s.secret);
 
 /** Fonte de dados da galeria: o catchRepository por trás de uma interface pequena. */
 export interface GalleryDataSource {
@@ -35,9 +38,7 @@ export const LURE_LABELS: Readonly<Record<LureId, string>> = {
 };
 
 /** Rótulos dos ambientes conhecidos; id desconhecido aparece como veio. */
-const LOCATION_LABELS: Readonly<Record<string, string>> = {
-  'lago-principal': 'Lago Tropical',
-};
+const LOCATION_LABELS: Readonly<Record<string, string>> = Object.fromEntries(LAKES.map((lake) => [lake.locationId, lake.name]));
 
 export interface GalleryFilter {
   readonly speciesId: SpeciesId | '';
@@ -180,7 +181,7 @@ export class GalleryView {
     const species = labeledSelect(
       'Espécie',
       'gallery-filter-species',
-      [{ value: '', text: 'Todas' }, ...SPECIES.map((s) => ({ value: s.id, text: s.name }))],
+      [{ value: '', text: 'Todas' }, ...VISIBLE_SPECIES.map((s) => ({ value: s.id, text: s.name }))],
       (v) => this.setFilter({ ...this.filter, speciesId: v as SpeciesId | '' }),
     );
     const rarity = labeledSelect(
@@ -281,19 +282,26 @@ export class GalleryView {
     this.objectUrls.length = 0;
     const visible = sortCatches(filterCatches(this.records, this.filter).filter((r) => !this.recordsOnly || r.isPersonalRecord), this.sort);
     const speciesCount = new Set(this.records.map((r) => r.speciesId)).size;
+    const catalog = SPECIES.filter((s) => !s.secret || this.records.some((r) => r.speciesId === s.id));
+    const speciesSelect = this.root.querySelector<HTMLSelectElement>('[data-testid="gallery-filter-species"]');
+    for (const species of catalog.filter((s) => s.secret)) {
+      if (speciesSelect && ![...speciesSelect.options].some((o) => o.value === species.id)) {
+        const option = el('option', '', species.name); option.value = species.id; speciesSelect.append(option);
+      }
+    }
     const best = Math.max(0, ...this.records.map((r) => r.weightKg));
     this.summary.replaceChildren();
-    for (const [value, label] of [[String(this.records.length), 'capturas'], [`${speciesCount}/${SPECIES.length}`, 'espécies descobertas'], [formatKg(best), 'maior captura'], [String(this.records.filter((r) => r.disposition === 'released').length), 'de volta ao lago']]) {
+    for (const [value, label] of [[String(this.records.length), 'capturas'], [`${speciesCount}/${catalog.length}`, 'espécies descobertas'], [formatKg(best), 'maior captura'], [String(this.records.filter((r) => r.disposition === 'released').length), 'de volta ao lago']]) {
       const stat = el('div', 'collection-stat');
       stat.append(el('strong', '', value), el('span', '', label));
       this.summary.append(stat);
     }
     this.atlas.replaceChildren();
-    for (const sp of SPECIES) {
+    for (const sp of catalog) {
       const catches = this.records.filter((r) => r.speciesId === sp.id);
       const tile = el('button', `atlas-species ${catches.length ? 'discovered' : 'undiscovered'}`);
       tile.type = 'button';
-      tile.append(speciesThumb(sp.id), el('strong', '', sp.name), el('span', '', catches.length ? `${catches.length} capturas · ${formatKg(Math.max(...catches.map((r) => r.weightKg)))}` : 'Ainda por descobrir'));
+      tile.append(speciesThumb(sp.id), el('strong', '', sp.name), el('span', '', getLake(speciesLake(sp.id)).name), el('span', '', catches.length ? `${catches.length} capturas · ${formatKg(Math.max(...catches.map((r) => r.weightKg)))}` : 'Ainda por descobrir'));
       tile.addEventListener('click', () => this.openSpecies(sp.id));
       this.atlas.append(tile);
     }
@@ -404,7 +412,7 @@ export class GalleryView {
     close.addEventListener('click', () => this.detail.close());
     head.append(el('span', 'menu-eyebrow', 'ATLAS DO LAGO'), close);
     const facts = el('div', 'species-facts');
-    facts.append(el('h2', '', sp.name), el('p', 'catch-scientific', sp.scientificName), el('p', '', sp.habitat),
+    facts.append(el('h2', '', sp.name), el('p', 'catch-scientific', sp.scientificName), el('p', 'menu-eyebrow', `EXCLUSIVO: ${getLake(speciesLake(id)).name}`), el('p', '', sp.habitat),
       el('p', '', `Profundidade: ${sp.depthRangeM.min}–${sp.depthRangeM.max} m · Água: ${sp.preferredTempC.min}–${sp.preferredTempC.max} °C`),
       el('h3', '', 'Prepare sua próxima pescaria'), el('p', '', `Iscas favoritas: ${sp.preferredLures.map((l) => LURE_LABELS[l]).join(', ')}.`));
     for (const curiosity of sp.curiosities) facts.append(el('p', 'note', curiosity));

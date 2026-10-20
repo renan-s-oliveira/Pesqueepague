@@ -1,6 +1,6 @@
 import type { Rng } from '../utils/rng.ts';
 import type { FishIndividual } from '../progression/types.ts';
-import { fightPull, hookWindowMs, type FishSpecies, type LureId, type SpeciesId } from './species.ts';
+import { SPECIES, fightPull, hookWindowMs, type FishSpecies, type LureId, type SpeciesId } from './species.ts';
 
 /** Passo fixo da IA do peixe: o resultado não depende de como o tempo chega em advance(). */
 export const BEHAVIOR_STEP_MS = 20;
@@ -72,6 +72,12 @@ export interface SpeciesBehavior {
 }
 
 export const SPECIES_BEHAVIOR: Readonly<Record<SpeciesId, SpeciesBehavior>> = {
+  ...Object.fromEntries(SPECIES.map((s) => [s.id, {
+    night: s.family === 'catfish' ? 1.5 : .65, twilight: 1.25,
+    weather: { clear: 1, cloudy: 1.1, rain: s.family === 'catfish' ? 1.3 : .85 },
+    motion: { still: s.family === 'carp' ? 1.3 : .6, slow: 1, fast: s.family === 'predator' ? 1.4 : .65 },
+    wariness: s.difficulty, senseRadiusM: 3 + s.difficulty * 5, staminaDrainPerSec: .2 - s.difficulty * .12,
+  }])) as Record<SpeciesId, SpeciesBehavior>,
   lambari: {
     night: 0.5,
     twilight: 1.2,

@@ -5,7 +5,7 @@ import { Rng } from '../utils/rng.ts';
  * Mesmo id, sampleRate e seed geram exatamente as mesmas amostras.
  */
 
-export const LOOP_IDS = ['forest', 'water', 'waves', 'wind', 'birds', 'insects', 'rain', 'menuMusic'] as const;
+export const LOOP_IDS = ['forest', 'water', 'waves', 'wind', 'birds', 'insects', 'rain', 'menuMusic', 'legendaryMusic'] as const;
 export type LoopId = (typeof LOOP_IDS)[number];
 
 export const SFX_IDS = ['cast', 'splash', 'line', 'bite', 'catch', 'fail', 'tension', 'jump', 'weigh', 'achievement'] as const;
@@ -468,6 +468,20 @@ export const generateAchievement: SoundGenerator = (out, sampleRate, rng) => {
 };
 
 export const SOUND_SPECS: Readonly<Record<SoundId, SoundSpec>> = {
+  legendaryMusic: { seconds: 8, loop: true, seamSeconds: .12, gain: .5, variants: 1, generate: (out, rate, rng) => {
+    const notes = [55, 65.406, 73.416, 61.735];
+    for (let i = 0; i < out.length; i++) {
+      const t = i / rate;
+      const beat = (t * 2) % 1;
+      const eighth = (t * 4) % 1;
+      const fundamental = notes[Math.floor(t / 2) % notes.length]!;
+      const kick = Math.sin(2 * Math.PI * (48 * t + 4 * (1 - Math.exp(-beat * 25)))) * Math.exp(-beat * 15) * .35;
+      const drum = (rng.next() * 2 - 1) * Math.exp(-eighth * 28) * .13;
+      const bass = Math.sin(2 * Math.PI * fundamental * t) * (.09 + .06 * Math.exp(-beat * 6));
+      const strings = (Math.sin(2 * Math.PI * fundamental * 4 * t) + Math.sin(2 * Math.PI * fundamental * 6 * t)) * .06 * (1 - Math.exp(-eighth * 12));
+      out[i] = kick + drum + bass + strings;
+    }
+  } },
   forest: { seconds: 12, loop: true, seamSeconds: 0.5, gain: 0.5, variants: 1, generate: generateForest },
   water: { seconds: 10, loop: true, seamSeconds: 0.5, gain: 0.35, variants: 1, generate: generateWater },
   waves: { seconds: 11, loop: true, seamSeconds: 0.5, gain: 0.3, variants: 1, generate: generateWaves },

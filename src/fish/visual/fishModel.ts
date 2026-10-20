@@ -18,6 +18,9 @@ import {
   SkinnedMesh,
   Uint16BufferAttribute,
   Vector2,
+  Vector3,
+  QuadraticBezierCurve3,
+  TubeGeometry,
   type Material,
 } from 'three';
 import { getSpecies, type SpeciesId, type SpeciesVisual } from '../species.ts';
@@ -78,7 +81,7 @@ interface Anatomy {
   readonly sheen: number;
 }
 
-const ANATOMY: Readonly<Record<SpeciesId, Anatomy>> = {
+const ANATOMY: Readonly<Partial<Record<SpeciesId, Anatomy>>> = {
   // Characidae prateado: corpo alto e comprimido, olho grande, nadadeira caudal bifurcada, anal longa.
   lambari: {
     widthRatio: 0.4,
@@ -363,7 +366,12 @@ export class FishModel {
 
   constructor(speciesId: SpeciesId, options: FishModelOptions) {
     const species = getSpecies(speciesId);
-    const anat = ANATOMY[speciesId];
+    const base = ANATOMY[speciesId] ?? ANATOMY[species.family === 'carp' || species.family === 'small' ? 'tilapia' : species.family === 'trout' ? 'lambari' : 'tucunare']!;
+    const anat: Anatomy = { ...base,
+      widthRatio: species.family === 'catfish' ? .85 : base.widthRatio,
+      caudal: species.family === 'ancient' ? 'rounded' : base.caudal,
+      eyeRadius: species.family === 'catfish' ? .018 : base.eyeRadius,
+    };
     const rng = new Rng(options.seed >>> 0);
     const L = options.lengthM ?? 0.3;
     if (!(Number.isFinite(L) && L > 0)) throw new RangeError(`lengthM deve ser > 0; recebido: ${String(L)}`);
@@ -495,6 +503,13 @@ export class FishModel {
     }
 
     this.buildEyes(f, anat, head, sec);
+    if (species.family === 'catfish') {
+      for (const side of [-1, 1]) for (let i = 0; i < 3; i++) {
+        const curve = new QuadraticBezierCurve3(new Vector3(-.02 * L, -.03 * L, side * .025 * L), new Vector3(.04 * L, -.04 * L, side * (.12 + i * .025) * L), new Vector3(-(.12 + i * .04) * L, -.07 * L, side * (.18 + i * .025) * L));
+        const geometry = new TubeGeometry(curve, 8, .002 * L, 4, false);
+        this.geometries.push(geometry); head.add(new Mesh(geometry, this.bodyMaterial));
+      }
+    }
     this.root.updateMatrixWorld(true);
     this.setWetness(1);
   }

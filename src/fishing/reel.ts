@@ -136,6 +136,15 @@ export class DragReel {
     this.dragN = this.checkDrag(dragN);
   }
 
+  /** Polegar libera o carretel: sai linha e a elasticidade relaxa. */
+  payOut(metres: number): void {
+    if (!Number.isFinite(metres) || metres < 0) throw new RangeError('linha liberada inválida');
+    const released = Math.min(metres, this.cfg.spoolCapacityM - this.lineOut);
+    this.lineOut += released;
+    this.stretchM = Math.max(0, this.stretchM - released);
+    this.tensionValue = this.stretchM * this.cfg.lineStiffnessNpm;
+  }
+
   update(dtMs: number, input: DragReelInput): DragReelStatus {
     if (!Number.isFinite(dtMs) || dtMs < 0) throw new RangeError(`dtMs inválido: ${String(dtMs)}`);
     if (!(input.retrieve >= 0 && input.retrieve <= 1)) throw new RangeError(`retrieve deve estar em [0, 1]: ${String(input.retrieve)}`);

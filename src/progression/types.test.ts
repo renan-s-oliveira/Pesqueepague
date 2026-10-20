@@ -73,7 +73,7 @@ describe('spawnIndividual', () => {
           expect(fish.rarity).toBe('legendary');
           legendary++;
         } else {
-          expect(fish.rarity).toBe(species.rarity);
+          expect(fish.rarity).toBe(species.secret ? 'legendary' : species.rarity);
         }
       }
       expect(legendary).toBeGreaterThan(0);

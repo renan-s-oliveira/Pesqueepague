@@ -76,5 +76,5 @@ export function spawnIndividual(rng: Rng, species: FishSpecies): FishIndividual 
     lightnessShift: round(rng.range(-LIGHTNESS_SHIFT_MAX, LIGHTNESS_SHIFT_MAX), 3),
     spotSeed: rng.int(0, 0xffffffff),
   };
-  return { speciesId: species.id, lengthCm, weightKg, rarity: individualRarity(species, weightKg), color };
+  return { speciesId: species.id, lengthCm, weightKg, rarity: species.secret ? 'legendary' : individualRarity(species, weightKg), color };
 }

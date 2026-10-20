@@ -10,7 +10,7 @@ function render(id: (typeof SOUND_IDS)[number], seed: number): Float32Array {
 }
 
 describe('síntese procedural', () => {
-  it('tem um gerador para cada um dos 18 sons pedidos', () => {
+  it('tem um gerador para cada som, incluindo a trilha lendária', () => {
     expect([...SOUND_IDS].sort()).toEqual(
       [
         'forest',
@@ -31,6 +31,7 @@ describe('síntese procedural', () => {
         'weigh',
         'achievement',
         'menuMusic',
+        'legendaryMusic',
       ].sort(),
     );
     for (const id of SOUND_IDS) expect(typeof SOUND_SPECS[id].generate).toBe('function');

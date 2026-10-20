@@ -176,7 +176,8 @@ describe('conquistas', () => {
   });
 
   it('over_10kg: bloqueada sem espécie que chegue a 10 kg; liberada e conquistável quando há', () => {
-    expect(state(evaluateAchievements([]), 'over_10kg').status).toBe('locked');
+    expect(state(evaluateAchievements([], SPECIES.slice(0, 3)), 'over_10kg').status).toBe('locked');
+    expect(state(evaluateAchievements([]), 'over_10kg').status).toBe('in_progress');
     const table = fakeTable(1, 12);
     expect(state(evaluateAchievements([], table), 'over_10kg').status).toBe('in_progress');
     const big = rec({ speciesId: 'sp0' as SpeciesId, weightKg: 10.5 });
@@ -184,7 +185,7 @@ describe('conquistas', () => {
   });
 
   it('ten_species: bloqueada (mas listada) até a tabela ter 10 espécies', () => {
-    const real = evaluateAchievements(SPECIES.map((s) => rec({ speciesId: s.id })));
+    const real = evaluateAchievements(SPECIES.slice(0, 3).map((s) => rec({ speciesId: s.id })), SPECIES.slice(0, 3));
     expect(state(real, 'ten_species')).toMatchObject({ status: 'locked', current: 3, target: 10 });
     const table = fakeTable(10, 1);
     const nine = table.slice(0, 9).map((s) => rec({ speciesId: s.id }));

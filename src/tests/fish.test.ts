@@ -24,8 +24,9 @@ const tilapia = getSpecies('tilapia');
 const tucunare = getSpecies('tucunare');
 
 describe('espécies', () => {
-  it('a tabela padrão é válida e tem as três espécies', () => {
-    expect(validateSpeciesTable(SPECIES).map((s) => s.id)).toEqual(['lambari', 'tilapia', 'tucunare']);
+  it('a tabela mantém as três originais e inclui 50 novas mais a secreta', () => {
+    expect(validateSpeciesTable(SPECIES).slice(0, 3).map((s) => s.id)).toEqual(['lambari', 'tilapia', 'tucunare']);
+    expect(SPECIES).toHaveLength(54);
   });
 
   it('rejeita configuração inválida', () => {
@@ -44,7 +45,7 @@ describe('espécies', () => {
   });
 
   it('traz nome científico, conservação e dados de biologia', () => {
-    expect(SPECIES.map((s) => s.scientificName)).toEqual([
+    expect(SPECIES.slice(0, 3).map((s) => s.scientificName)).toEqual([
       'Astyanax lacustris',
       'Oreochromis niloticus',
       'Cichla ocellaris',
@@ -64,7 +65,7 @@ describe('espécies', () => {
       const minL = lengthForWeightCm(s, s.minWeightKg);
       const maxL = lengthForWeightCm(s, s.maxWeightKg);
       expect(minL).toBeGreaterThan(3);
-      expect(maxL).toBeLessThan(90);
+      expect(maxL).toBeLessThan(300);
       expect(expectedWeightKg(s, maxL)).toBeCloseTo(s.maxWeightKg, 6);
     }
   });
@@ -79,10 +80,11 @@ describe('espécies', () => {
     const rng = new Rng(42);
     const counts = { lambari: 0, tilapia: 0, tucunare: 0 };
     const n = 20000;
-    for (let i = 0; i < n; i++) counts[pickSpecies(rng).id]++;
-    expect(counts.lambari / n).toBeCloseTo(spawnProbability('lambari'), 1);
-    expect(counts.tilapia / n).toBeCloseTo(spawnProbability('tilapia'), 1);
-    expect(counts.tucunare / n).toBeCloseTo(spawnProbability('tucunare'), 1);
+    const table = SPECIES.slice(0, 3);
+    for (let i = 0; i < n; i++) { const id = pickSpecies(rng, table).id as keyof typeof counts; counts[id]++; }
+    expect(counts.lambari / n).toBeCloseTo(spawnProbability('lambari', table), 1);
+    expect(counts.tilapia / n).toBeCloseTo(spawnProbability('tilapia', table), 1);
+    expect(counts.tucunare / n).toBeCloseTo(spawnProbability('tucunare', table), 1);
   });
 
   it('o peso sorteado fica na faixa da espécie', () => {

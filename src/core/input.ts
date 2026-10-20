@@ -163,6 +163,8 @@ export function keyToAction(code: string, down: boolean, current: ActionSnapshot
 }
 
 export interface InputBindings {
+  readonly onCrank?: (turns: number) => void;
+  readonly onPayout?: (on: boolean) => void;
   /** Elemento que recebe cliques e toques do jogo (o canvas). */
   readonly surface: HTMLElement;
   readonly getState: () => GameState;
@@ -177,6 +179,7 @@ const BASE_SENSITIVITY = 0.0022;
 
 /** Liga os eventos do DOM ao mapeamento. dispose() remove todos os listeners. */
 export class InputController {
+  private freeCursor = false;
   private sensitivity = 1;
   private primaryHeld = false;
   private readonly b: InputBindings;
@@ -193,6 +196,7 @@ export class InputController {
     this.b = bindings;
     const s = bindings.surface;
     s.addEventListener('pointerdown', this.onPointerDown);
+    s.addEventListener('wheel', this.onWheel, { passive: false });
     window.addEventListener('pointerup', this.onPointerUp);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
@@ -207,6 +211,7 @@ export class InputController {
   }
 
   requestLock(): void {
+    this.freeCursor = false;
     const s = this.b.surface;
     if (document.pointerLockElement !== s && typeof s.requestPointerLock === 'function') {
       try {
@@ -224,6 +229,7 @@ export class InputController {
   dispose(): void {
     const s = this.b.surface;
     s.removeEventListener('pointerdown', this.onPointerDown);
+    s.removeEventListener('wheel', this.onWheel);
     window.removeEventListener('pointerup', this.onPointerUp);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
@@ -269,6 +275,12 @@ export class InputController {
       return;
     }
     if (inForm) return;
+    if (e.code === 'KeyC' && !e.repeat && canLook(this.b.getState())) {
+      this.freeCursor = !this.freeCursor;
+      if (this.freeCursor) this.releaseLock(); else this.requestLock();
+      return;
+    }
+    if (e.code === 'KeyE' && this.b.getState() === 'REELING') { e.preventDefault(); this.b.onPayout?.(true); return; }
     if (!e.repeat && isPlayState(this.b.getState())) {
       const action = keyToAction(e.code, true, this.actions.snapshot);
       if (action) {
@@ -285,6 +297,7 @@ export class InputController {
   };
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
+    if (e.code === 'KeyE') this.b.onPayout?.(false);
     if (e.code === 'Space') this.release();
     else if (e.code === 'KeyR') this.applyAction({ kind: 'reel', active: false });
   };
@@ -297,10 +310,17 @@ export class InputController {
 
   /** O navegador consome o ESC ao sair do pointer lock: tratamos a saída do lock como pausa. */
   private readonly onLockChange = (): void => {
-    if (document.pointerLockElement === null && isPlayState(this.b.getState())) this.emit('pause');
+    if (document.pointerLockElement === null && !this.freeCursor && isPlayState(this.b.getState())) this.emit('pause');
   };
 
   private readonly onBlur = (): void => {
+    this.b.onPayout?.(false);
     this.release();
+  };
+
+  private readonly onWheel = (event: WheelEvent): void => {
+    if (this.b.getState() !== 'REELING') return;
+    event.preventDefault();
+    if (event.deltaY < 0) this.b.onCrank?.(Math.min(1, Math.abs(event.deltaY) / 160));
   };
 }

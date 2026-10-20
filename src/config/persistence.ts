@@ -1,4 +1,5 @@
 import { computePoints, getSpecies, isSpeciesId, LURE_IDS, type LureId, type SpeciesId } from '../fish/species.ts';
+import { isLakeId, type LakeId } from '../world/lakes.ts';
 
 /**
  * Persistência local com schema versionado. Nada de dado pessoal: só preferências e números de jogo.
@@ -15,6 +16,7 @@ export const QUALITY_LEVELS = ['low', 'medium', 'high', 'ultra', 'auto'] as cons
 export type Quality = (typeof QUALITY_LEVELS)[number];
 
 export interface Settings {
+  readonly lakeId?: LakeId;
   readonly quality: Quality;
   readonly showHints: boolean;
   readonly cameraSensitivity: number;
@@ -165,6 +167,7 @@ function parseV2(raw: Raw): LoadResult {
   const data: SaveData = {
     version: SAVE_VERSION,
     settings: {
+      ...(isLakeId(s['lakeId']) ? { lakeId: s['lakeId'] } : {}),
       quality: parsedQuality,
       showHints: r.boolean(s, 'showHints', 'settings.showHints', d.settings.showHints),
       cameraSensitivity: r.number(s, 'cameraSensitivity', 'settings.cameraSensitivity', 0.1, 3, d.settings.cameraSensitivity),
