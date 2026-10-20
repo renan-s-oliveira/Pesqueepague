@@ -2,7 +2,15 @@
 
 Jogo de pescaria em primeira pessoa num lago ao fim da tarde, feito com Three.js, TypeScript estrito e Vite. Roda inteiro no navegador, sem backend: você arremessa do píer, espera a mordida, fisga e recolhe a linha controlando a tensão.
 
-## Requisitos
+## Menu, álbum e sala de troféus
+
+O menu do Pesque & Pague abre sobre o lago e oferece acesso direto ao álbum e à sala de troféus. Na galeria, o atlas apresenta habitat, profundidade, temperatura e iscas favoritas de cada espécie, incluindo as que você ainda não capturou. Os cards abrem fichas com foto, medidas, comparação com seu recorde e navegação entre capturas. Use **Só recordes**, busca e filtros para explorar a coleção.
+
+Na sala de troféus, clique em um exemplar ou em seu nome para observar de perto. Arraste para orbitar, use a roda do mouse ou os botões para aproximar e afastar, e alterne o giro automático. **Visão geral** reenquadra a coleção; **Esc** fecha a sala. As conquistas têm filtros por estado, detalhes de desbloqueio e um próximo desafio sugerido.
+
+A vara usa 12 segmentos com molas amortecidas e torque que considera sua curvatura. A linha tem restrições com pontas fixas, arrasto na água e folga que diminui conforme a tensão da briga; novos arremessos reiniciam a simulação para não carregar energia da linha anterior.
+
+## Requisitos de execução
 
 - **Node.js** com npm. O projeto usa Vite 8 (veja `package.json`); use uma versão de Node aceita por ele (20.19+ ou 22.12+).
 - **Navegador com WebGL2** (Chrome, Edge, Firefox ou Safari atuais). Sem WebGL2 o jogo não inicia e mostra a mensagem “Este navegador não oferece WebGL2. Atualize o navegador ou ative a aceleração de hardware.”, com um botão para tentar de novo.

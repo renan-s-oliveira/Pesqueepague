@@ -151,6 +151,25 @@ export class VerletLine {
     this.end = end;
   }
 
+  /** Novo arremesso: evita transportar velocidade e rompimentos da pescaria anterior. */
+  reset(start: Vec3, end: Vec3, lengthM: number): void {
+    this.setAnchors(start, end);
+    this.setLength(lengthM);
+    this.brokenFlag = false;
+    this.accumulatorMs = 0;
+    this.peak = 0;
+    const distance = Math.hypot(end.x - start.x, end.y - start.y, end.z - start.z);
+    const sag = Math.min(1.5, Math.max(0, this.length - distance) * 0.5);
+    for (let i = 0; i < this.cfg.points; i++) {
+      const t = i / (this.cfg.points - 1);
+      this.pos[i * 3] = start.x + (end.x - start.x) * t;
+      this.pos[i * 3 + 1] = start.y + (end.y - start.y) * t - Math.sin(Math.PI * t) * sag;
+      this.pos[i * 3 + 2] = start.z + (end.z - start.z) * t;
+    }
+    this.prev.set(this.pos);
+    this.tensionValue = this.computeTension();
+  }
+
   points(): Vec3[] {
     const out: Vec3[] = [];
     for (let i = 0; i < this.cfg.points; i++) {
@@ -175,6 +194,7 @@ export class VerletLine {
     const { cfg, pos, prev } = this;
     const n = cfg.points;
     for (let i = 0; i < n; i++) {
+      if (i === 0 || (i === n - 1 && !this.brokenFlag)) continue;
       const k = i * 3;
       const inWater = pos[k + 1]! <= cfg.waterLevelY;
       const keep = 1 - (inWater ? cfg.waterDrag : cfg.airDamping);
@@ -189,7 +209,8 @@ export class VerletLine {
     const rest = this.length / (n - 1);
     for (let it = 0; it < cfg.iterations; it++) {
       this.pin();
-      for (let i = 0; i < n - 1; i++) this.satisfy(i, rest);
+      // Alternar o sentido evita favorecer sempre uma das pontas.
+      for (let i = 0; i < n - 1; i++) this.satisfy(it % 2 === 0 ? i : n - 2 - i, rest);
       this.floatOnWater();
     }
     this.pin();
@@ -221,6 +242,9 @@ export class VerletLine {
       this.pos[k] = v.x;
       this.pos[k + 1] = v.y;
       this.pos[k + 2] = v.z;
+      this.prev[k] = v.x;
+      this.prev[k + 1] = v.y;
+      this.prev[k + 2] = v.z;
     };
     set(0, this.start);
     if (!this.brokenFlag) set(this.cfg.points - 1, this.end);
@@ -237,17 +261,19 @@ export class VerletLine {
     if (d === 0) return;
     // Linha não resiste a compressão: só corrige quando o segmento está esticado.
     if (d <= rest) return;
-    const half = (d - rest) / d / 2;
-    pos[a] = pos[a]! + dx * half;
-    pos[a + 1] = pos[a + 1]! + dy * half;
-    pos[a + 2] = pos[a + 2]! + dz * half;
-    pos[b] = pos[b]! - dx * half;
-    pos[b + 1] = pos[b + 1]! - dy * half;
-    pos[b + 2] = pos[b + 2]! - dz * half;
+    const freeA = i === 0 ? 0 : 1;
+    const freeB = i + 1 === this.cfg.points - 1 && !this.brokenFlag ? 0 : 1;
+    const correction = (d - rest) / d / Math.max(1, freeA + freeB);
+    pos[a] = pos[a]! + dx * correction * freeA;
+    pos[a + 1] = pos[a + 1]! + dy * correction * freeA;
+    pos[a + 2] = pos[a + 2]! + dz * correction * freeA;
+    pos[b] = pos[b]! - dx * correction * freeB;
+    pos[b + 1] = pos[b + 1]! - dy * correction * freeB;
+    pos[b + 2] = pos[b + 2]! - dz * correction * freeB;
   }
 
   private floatOnWater(): void {
-    for (let i = 0; i < this.cfg.points; i++) {
+    for (let i = 1; i < this.cfg.points - (this.brokenFlag ? 0 : 1); i++) {
       const k = i * 3 + 1;
       if (this.pos[k]! < this.cfg.waterLevelY) this.pos[k] = this.cfg.waterLevelY;
     }

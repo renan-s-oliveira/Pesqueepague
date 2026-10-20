@@ -24,6 +24,7 @@ test('galeria: 3 capturas via __fp, filtros, ordenação, busca e a sala de trof
   page.on('pageerror', (err) => errors.push(err.message));
 
   await openGame(page);
+  await page.screenshot({ path: test.info().outputPath('menu.png') });
 
   // 3 capturas direto no repositório, pelo gancho __fp.saveCatch do modo e2e.
   await expect
@@ -82,6 +83,7 @@ test('galeria: 3 capturas via __fp, filtros, ordenação, busca e a sala de trof
   await expect(cards).toHaveCount(3);
   await expect(cards.first()).toContainText('Tucunaré');
   await expect(page.getByTestId('gallery-status')).toContainText('3 capturas');
+  await page.screenshot({ path: test.info().outputPath('gallery.png') });
 
   // Ordenação por peso, nas duas direções.
   await page.getByTestId('gallery-sort').selectOption('weight_asc');
@@ -121,6 +123,30 @@ test('galeria: 3 capturas via __fp, filtros, ordenação, busca e a sala de trof
   await page.getByTestId('gallery-search').fill('');
   await expect(cards).toHaveCount(3);
 
+  // Fichas navegáveis, fechamento por teclado e filtro rápido de recordes.
+  await cards.first().getByRole('button', { name: /Abrir captura/ }).click();
+  const detail = page.getByTestId('gallery-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText('Lambari');
+  await detail.getByRole('button', { name: 'Próxima →' }).click();
+  await expect(detail).toContainText('Tilápia');
+  await detail.getByRole('button', { name: '← Anterior' }).click();
+  await expect(detail).toContainText('Lambari');
+  await page.keyboard.press('Escape');
+  await expect(detail).not.toBeVisible();
+  await page.getByTestId('gallery-records-only').click();
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toContainText('Tucunaré');
+  await page.getByRole('button', { name: 'Limpar filtros' }).click();
+  await expect(cards).toHaveCount(3);
+  await page.getByText('Atlas do lago · descubra suas espécies', { exact: true }).click();
+  await page.locator('.atlas-species').filter({ hasText: 'Tilápia' }).click();
+  await expect(detail).toContainText('Iscas favoritas');
+  await detail.getByRole('button', { name: 'Ver capturas desta espécie →' }).click();
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toContainText('Tilápia');
+  await page.getByRole('button', { name: 'Limpar filtros' }).click();
+
   // Sala de troféus 3D: abre com os recordes e as estatísticas, e fecha de volta à galeria.
   await page.getByTestId('gallery-trophy-room').click();
   const room = page.getByTestId('trophy-room');
@@ -131,8 +157,49 @@ test('galeria: 3 capturas via __fp, filtros, ordenação, busca e a sala de trof
   await expect(stats).toContainText('Recorde pessoal');
   await expect(stats).toContainText('Tucunaré');
   await expect(page.getByTestId('trophy-record')).toHaveCount(3);
+  await page.screenshot({ path: test.info().outputPath('trophies.png') });
+  await room.getByRole('button', { name: /Tilápia/ }).click();
+  await expect(room.locator('.trophy-selection')).toContainText('Tilápia');
+  await expect(room.getByRole('button', { name: /Tilápia/ })).toHaveAttribute('aria-pressed', 'true');
+  await room.getByRole('button', { name: 'Aproximar +' }).click();
+  await room.getByRole('button', { name: 'Afastar −' }).click();
+  await room.getByRole('button', { name: 'Giro automático' }).click();
+  await expect(room.getByRole('button', { name: 'Giro automático' })).toHaveAttribute('aria-pressed', 'false');
+  await room.getByRole('button', { name: 'Visão geral' }).click();
   await page.getByTestId('trophy-close').click();
   await expect(room).toHaveCount(0);
 
+  await page.getByTestId('panel-back').click();
+  await page.getByTestId('menu-achievements').click();
+  await page.getByRole('button', { name: 'Desbloqueadas', exact: true }).click();
+  await expect(page.locator('.achievement-item:visible')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Em progresso', exact: true }).click();
+  await expect(page.locator('.achievement-item.status-unlocked:visible')).toHaveCount(0);
+
   expect(errors).toEqual([]);
+});
+
+test('coleção em tela pequena: atlas vazio, troféus e retorno pelo teclado', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openGame(page);
+  await page.screenshot({ path: test.info().outputPath('menu-mobile.png') });
+  await page.getByTestId('menu-gallery').click();
+  await expect(page.getByTestId('gallery-empty')).toBeVisible();
+  await page.getByText('Atlas do lago · descubra suas espécies', { exact: true }).click();
+  await page.locator('.atlas-species').filter({ hasText: 'Tucunaré' }).click();
+  const detail = page.getByTestId('gallery-detail');
+  await expect(detail).toContainText('Iscas favoritas');
+  await page.screenshot({ path: test.info().outputPath('atlas-mobile.png') });
+  await page.keyboard.press('Escape');
+  await expect(detail).not.toBeVisible();
+  await page.getByTestId('gallery-trophy-room').click();
+  const room = page.getByTestId('trophy-room');
+  await expect(room).toBeVisible();
+  await expect(room).toContainText('Nenhum recorde ainda');
+  await page.screenshot({ path: test.info().outputPath('trophies-mobile.png') });
+  await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => !!document.activeElement?.closest('.trophy-room'))).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(room).toHaveCount(0);
+  await expect(page.getByTestId('gallery')).toBeVisible();
 });

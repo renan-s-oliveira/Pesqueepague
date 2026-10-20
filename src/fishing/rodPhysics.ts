@@ -1,7 +1,7 @@
 /**
  * Vara (blank) como cadeia de segmentos com mola angular e amortecedor, em timestep fixo.
  * A tensão da linha aplicada na ponteira gera, em cada junta, um torque igual à tensão vezes o
- * braço até a ponteira; em equilíbrio a flexão é proporcional à tensão (θ = τ / k). Sem carga,
+ * braço horizontal até a ponteira, que diminui com a curvatura. Sem carga,
  * a mola devolve o blank ao repouso com uma vibração subamortecida que decai.
  */
 export interface RodConfig {
@@ -20,13 +20,13 @@ export interface RodConfig {
 }
 
 export const DEFAULT_ROD_CONFIG: RodConfig = {
-  segments: 8,
+  segments: 12,
   lengthM: 2.4,
-  buttStiffnessNmPerRad: 60,
-  tipStiffnessNmPerRad: 6,
-  dampingNmsPerRad: 0.08,
+  buttStiffnessNmPerRad: 120,
+  tipStiffnessNmPerRad: 14,
+  dampingNmsPerRad: 0.13,
   segmentInertiaKgM2: 0.01,
-  maxBendPerJointRad: 1,
+  maxBendPerJointRad: 0.22,
   fixedDtMs: 1000 / 240,
   maxStepsPerUpdate: 64,
 };
@@ -51,7 +51,7 @@ export class RodPhysics {
   private readonly angle: Float64Array;
   private readonly velocity: Float64Array;
   private readonly stiffness: Float64Array;
-  private readonly leverArm: Float64Array;
+  private readonly projectedLever: Float64Array;
   private tensionN = 0;
   private accumulatorMs = 0;
 
@@ -61,12 +61,10 @@ export class RodPhysics {
     this.angle = new Float64Array(n);
     this.velocity = new Float64Array(n);
     this.stiffness = new Float64Array(n);
-    this.leverArm = new Float64Array(n);
-    const segmentM = cfg.lengthM / n;
+    this.projectedLever = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       const t = i / (n - 1);
       this.stiffness[i] = cfg.buttStiffnessNmPerRad + (cfg.tipStiffnessNmPerRad - cfg.buttStiffnessNmPerRad) * t;
-      this.leverArm[i] = segmentM * (n - i);
     }
   }
 
@@ -102,11 +100,19 @@ export class RodPhysics {
     return Array.from(this.angle);
   }
 
-  /** Flexão de equilíbrio para uma tensão, sem simular (θ_i = T·r_i / k_i, limitado). */
+  /** Equilíbrio com o braço de alavanca encurtado pela curvatura do blank. */
   staticBendRad(tensionN: number): number {
-    let sum = 0;
-    for (let i = 0; i < this.cfg.segments; i++) sum += this.clampBend((tensionN * this.leverArm[i]!) / this.stiffness[i]!);
-    return sum;
+    if (!Number.isFinite(tensionN) || tensionN < 0) throw new RangeError('tensão inválida');
+    const angles = new Float64Array(this.cfg.segments);
+    const arms = new Float64Array(this.cfg.segments);
+    for (let iteration = 0; iteration < 200; iteration++) {
+      this.projectLeverArms(angles, arms);
+      for (let i = 0; i < angles.length; i++) {
+        const target = this.clampBend(tensionN * arms[i]! / this.stiffness[i]!);
+        angles[i] = angles[i]! + (target - angles[i]!) * 0.15;
+      }
+    }
+    return angles.reduce((sum, a) => sum + a, 0);
   }
 
   /** Pontos do blank no plano da vara, do cabo à ponteira; a flexão curva para baixo (−y). */
@@ -134,9 +140,9 @@ export class RodPhysics {
     if (!Number.isFinite(dtMs) || dtMs < 0) throw new RangeError(`dtMs inválido: ${String(dtMs)}`);
     this.accumulatorMs += dtMs;
     let steps = 0;
-    while (this.accumulatorMs >= this.cfg.fixedDtMs && steps < this.cfg.maxStepsPerUpdate) {
+    while (this.accumulatorMs + 1e-8 >= this.cfg.fixedDtMs && steps < this.cfg.maxStepsPerUpdate) {
       this.fixedStep(this.cfg.fixedDtMs / 1000);
-      this.accumulatorMs -= this.cfg.fixedDtMs;
+      this.accumulatorMs = Math.max(0, this.accumulatorMs - this.cfg.fixedDtMs);
       steps++;
     }
     if (steps === this.cfg.maxStepsPerUpdate) this.accumulatorMs = 0;
@@ -144,15 +150,28 @@ export class RodPhysics {
 
   private fixedStep(dt: number): void {
     const { cfg } = this;
+    this.projectLeverArms(this.angle, this.projectedLever);
     for (let i = 0; i < cfg.segments; i++) {
       const a = this.angle[i]!;
-      const torque = this.tensionN * this.leverArm[i]! - this.stiffness[i]! * a - cfg.dampingNmsPerRad * this.velocity[i]!;
+      const torque = this.tensionN * this.projectedLever[i]! - this.stiffness[i]! * a - cfg.dampingNmsPerRad * this.velocity[i]!;
       // Euler semi-implícito: estável para k/I e dt da configuração padrão.
       const w = this.velocity[i]! + (torque / cfg.segmentInertiaKgM2) * dt;
       const next = this.clampBend(a + w * dt);
       this.velocity[i] = next === a + w * dt ? w : 0;
       this.angle[i] = next;
     }
+  }
+
+  private projectLeverArms(angles: Float64Array, out: Float64Array): void {
+    let heading = 0;
+    let x = 0;
+    const segment = this.cfg.lengthM / this.cfg.segments;
+    for (let i = 0; i < angles.length; i++) {
+      out[i] = x;
+      heading -= angles[i]!;
+      x += Math.cos(heading) * segment;
+    }
+    for (let i = 0; i < out.length; i++) out[i] = Math.max(0, x - out[i]!);
   }
 
   private clampBend(a: number): number {

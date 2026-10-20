@@ -39,14 +39,26 @@ function formatProgress(a: AchievementState): string {
 export function achievementsContent(states: readonly AchievementState[]): HTMLElement {
   const box = el('div', 'achievements');
   box.dataset['testid'] = 'achievements';
-  box.append(el('h2', '', 'Conquistas'));
+  box.append(el('p', 'menu-eyebrow', 'PEQUENAS VITÓRIAS. GRANDES HISTÓRIAS.'), el('h2', '', 'Conquistas'));
   const unlocked = states.filter((a) => a.status === 'unlocked').length;
   box.append(el('p', 'note', `${unlocked} de ${states.length} desbloqueadas`));
+  const next = states.filter((a) => a.status === 'in_progress').sort((a, b) => b.current / b.target - a.current / a.target)[0];
+  if (next) {
+    const goal = el('div', 'next-achievement');
+    goal.append(el('span', 'menu-eyebrow', 'SEU PRÓXIMO DESAFIO'), el('h3', '', ACHIEVEMENT_LABELS[next.id].title),
+      el('p', '', `${ACHIEVEMENT_LABELS[next.id].description} Progresso: ${formatProgress(next)}.`));
+    box.append(goal);
+  }
+  const filters = el('div', 'collection-actions');
+  filters.setAttribute('aria-label', 'Filtrar conquistas');
+  const status = el('p', 'note');
+  status.setAttribute('role', 'status');
   const list = el('ul', 'achievement-list');
   for (const a of states) {
     const labels = ACHIEVEMENT_LABELS[a.id];
     const item = el('li', `achievement-item status-${a.status}`);
     item.dataset['testid'] = 'achievement-item';
+    item.dataset['status'] = a.status;
     const head = el('div', 'achievement-head');
     head.append(el('h3', 'achievement-title', labels.title), el('span', 'achievement-status', STATUS_LABELS[a.status]));
     const bar = el('div', 'achievement-bar');
@@ -59,9 +71,34 @@ export function achievementsContent(states: readonly AchievementState[]): HTMLEl
     fill.style.width = `${Math.round(Math.min(1, a.target > 0 ? a.current / a.target : 0) * 100)}%`;
     bar.append(fill);
     item.append(head, el('p', 'achievement-desc', labels.description), bar, el('p', 'achievement-progress', formatProgress(a)));
+    const details = el('details', 'achievement-details');
+    details.append(el('summary', '', a.status === 'unlocked' ? 'Ver conquista' : 'Como conquistar'));
+    details.append(el('p', 'note', a.unlockedAt !== null
+      ? `Conquistada em ${new Date(a.unlockedAt).toLocaleDateString('pt-BR')}. Um marco na sua história no lago.`
+      : a.status === 'locked' ? 'Esta meta depende de espécies que ainda não estão disponíveis neste lago.'
+      : a.id === 'sport_master' ? 'Na tela de captura, escolha soltar o peixe. Cada soltura registrada aproxima você da meta.'
+      : a.id === 'personal_record' ? 'Capture novamente uma espécie que já está no seu álbum e supere o maior peso registrado.'
+      : 'As capturas registradas no seu álbum contam automaticamente para esta meta. Experimente outras iscas em Equipamentos.'));
+    item.append(details);
     list.append(item);
   }
-  box.append(list);
+  for (const [label, value] of [['Todas', 'all'], ['Em progresso', 'in_progress'], ['Desbloqueadas', 'unlocked']] as const) {
+    const button = el('button', 'ui-btn compact', label);
+    button.type = 'button';
+    button.setAttribute('aria-pressed', String(value === 'all'));
+    button.addEventListener('click', () => {
+      for (const sibling of filters.querySelectorAll('button')) sibling.setAttribute('aria-pressed', String(sibling === button));
+      let count = 0;
+      for (const item of list.children) {
+        const row = item as HTMLElement;
+        row.hidden = value !== 'all' && row.dataset['status'] !== value;
+        if (!row.hidden) count++;
+      }
+      status.textContent = count ? `${count} conquistas nesta seleção` : 'Nenhuma conquista nesta seleção. Seu próximo arremesso pode mudar isso.';
+    });
+    filters.append(button);
+  }
+  box.append(filters, status, list);
   return box;
 }
 

@@ -7,7 +7,7 @@ import { Group, Vector3, type PerspectiveCamera, type Scene } from 'three';
 import type { GameState } from '../../core/stateMachine.ts';
 import type { SpeciesId } from '../../fish/species.ts';
 import { LAKE } from '../../world/layout.ts';
-import { trajectoryAt, type CastResult } from '../cast.ts';
+import { DEFAULT_CAST_CONFIG, trajectoryAt, type CastResult } from '../cast.ts';
 import { LINE_SPECS } from '../linePhysics.ts';
 import { DEFAULT_ROD_CONFIG, RodPhysics } from '../rodPhysics.ts';
 import { LineRenderer } from './lineRenderer.ts';
@@ -50,6 +50,8 @@ export class FishingVisuals {
   private lastState: GameState | null = null;
   private prevLineOut: number | null = null;
   private wakeCooldownS = 0;
+  private rodYaw: number | null = null;
+  private rodYawVelocity = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -69,6 +71,13 @@ export class FishingVisuals {
   /** Um passo visual por frame; dt e elapsed em segundos, como no frame hook da cena. */
   update(frame: VisualsFrame, dt: number, elapsed: number): void {
     const dtMs = Math.min(100, Math.max(0, dt * 1000));
+    if (frame.state === 'MENU' || frame.state === 'LOADING' || frame.state === 'BOOT') {
+      this.lastState = frame.state;
+      this.rodYaw = null;
+      this.prevLineOut = null;
+      return;
+    }
+    if (frame.state === 'PAUSED') return;
 
     // Vara presa à câmera (primeira pessoa), girando só no plano horizontal.
     this.camera.getWorldDirection(this.fwd);
@@ -81,7 +90,16 @@ export class FishingVisuals {
       .addScaledVector(this.right, ROD_OFFSET.right)
       .addScaledVector(this.fwd, ROD_OFFSET.forward)
       .addScaledVector(UP, -ROD_OFFSET.down);
-    this.rodModel.group.rotation.set(0, Math.atan2(-this.fwd.x, -this.fwd.z), 0);
+    const targetYaw = Math.atan2(-this.fwd.x, -this.fwd.z);
+    this.rodYaw ??= targetYaw;
+    // Inércia lateral: o blank acompanha o olhar com uma pequena resposta amortecida.
+    for (let time = dtMs / 1000; time > 0; time -= 1 / 120) {
+      const step = Math.min(time, 1 / 120);
+      const error = Math.atan2(Math.sin(targetYaw - this.rodYaw), Math.cos(targetYaw - this.rodYaw));
+      this.rodYawVelocity += (90 * error - 18 * this.rodYawVelocity) * step;
+      this.rodYaw += this.rodYawVelocity * step;
+    }
+    this.rodModel.group.rotation.set(0, this.rodYaw, 0);
 
     // Flexão por RodPhysics: tensão da sessão na briga, carga do arremesso em IDLE.
     const tensionN =
@@ -104,7 +122,10 @@ export class FishingVisuals {
       spinRad = (this.prevLineOut - lineOut) / SPOOL_RADIUS_M;
     }
     this.prevLineOut = lineOut;
-    this.rodModel.update(this.rodSim.points(ROD_BASE_ANGLE_RAD), spinRad);
+    const casting = frame.state === 'CASTING' ? Math.exp(-frame.flightElapsedMs / 180) * 0.32 : 0;
+    const lift = frame.state === 'IDLE' ? frame.chargePower * 0.32 : 0;
+    const fightLift = frame.state === 'REELING' ? frame.tension * 0.2 : 0;
+    this.rodModel.update(this.rodSim.points(ROD_BASE_ANGLE_RAD + lift + fightLift - casting), spinRad);
     this.rodModel.getTipWorld(this.tip);
 
     this.placeLure(frame, elapsed);
@@ -118,8 +139,11 @@ export class FishingVisuals {
       }
     }
 
-    const slackM = this.tip.distanceTo(this.lureAt) * 1.03 + 0.2;
-    this.line.update(dtMs, this.tip, this.lureAt, slackM);
+    const distance = this.tip.distanceTo(this.lureAt);
+    const tautness = frame.state === 'REELING' ? Math.min(1, Math.max(0, frame.tension)) : frame.state === 'HOOKED' ? 0.7 : 0;
+    const slackM = distance * (1.002 + (1 - tautness) * 0.035) + 0.12 * (1 - tautness);
+    const resetLine = frame.state !== this.lastState && (frame.state === 'CASTING' || frame.state === 'IDLE' || frame.state === 'CAUGHT' || frame.state === 'ESCAPED');
+    this.line.update(dtMs, this.tip, this.lureAt, slackM, resetLine);
     this.lastState = frame.state;
   }
 
@@ -136,7 +160,8 @@ export class FishingVisuals {
       case 'CASTING': {
         if (!cast) break;
         const t = trajectoryAt(cast, Math.max(0, frame.flightElapsedMs));
-        this.lureAt.copy(this.castOrigin).addScaledVector(this.castDir, t.x).setY(Math.max(WATER_Y, t.y));
+        const progress = Math.min(1, frame.flightElapsedMs / cast.flightMs);
+        this.lureAt.copy(this.castOrigin).addScaledVector(this.castDir, t.x).setY(Math.max(WATER_Y, t.y + this.castOrigin.y * (1 - progress)));
         return;
       }
       case 'WAITING':
@@ -149,20 +174,24 @@ export class FishingVisuals {
       case 'REELING': {
         const d = frame.lineDistanceM ?? cast?.distanceM ?? 1;
         this.lureAt.copy(this.castOrigin).addScaledVector(this.castDir, Math.max(0.3, d)).setY(WATER_Y);
+        const surge = Math.sin(elapsed * 2.1) * Math.min(0.6, d * 0.08) * frame.tension;
+        this.lureAt.x += -this.castDir.z * surge;
+        this.lureAt.z += this.castDir.x * surge;
         return;
       }
       default:
         break;
     }
     // Repouso (IDLE, CAUGHT, ESCAPED…): isca pendurada perto da ponteira.
-    this.lureAt.set(this.tip.x, Math.max(WATER_Y + 0.15, this.tip.y - 0.7), this.tip.z);
+    const sway = Math.sin(elapsed * 2.8) * 0.035;
+    this.lureAt.set(this.tip.x + sway, Math.max(WATER_Y + 0.15, this.tip.y - 0.7), this.tip.z + Math.sin(elapsed * 2) * 0.025);
   }
 
   /** Transições: fixa origem/direção do arremesso e marca a água quando a isca cai. */
   private onStateChange(frame: VisualsFrame): void {
     if (frame.state === 'CASTING') {
       this.castOrigin.set(this.tip.x === 0 && this.tip.z === 0 ? this.camera.position.x : this.tip.x, 0, this.tip.z || this.camera.position.z);
-      this.castOrigin.y = 0;
+      this.castOrigin.y = this.tip.y - DEFAULT_CAST_CONFIG.launchHeightM;
       this.castDir.copy(this.fwd);
     } else if (frame.state === 'WAITING' && this.lastState === 'CASTING' && frame.cast) {
       const s = Math.min(1, frame.cast.speedMps / 18);

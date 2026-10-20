@@ -165,3 +165,135 @@
   .trophy-stats { top: 8px; right: 8px; left: 8px; width: auto; max-height: 40vh; font-size: 14px; }
   .trophy-close { left: 8px; bottom: 12px; width: calc(100vw - 16px); }
 }
+
+/* Identidade do clube: papel quente, verde profundo e o lago como paisagem viva. */
+.menu { padding: 38px 5vw 64px; background: linear-gradient(90deg, rgba(5, 24, 25, .96), rgba(5, 24, 25, .8) 33%, rgba(5, 24, 25, .12) 72%), linear-gradient(0deg, rgba(5, 24, 25, .85), transparent 40%); overflow: auto; }
+.menu-main { width: 100%; max-width: none; gap: 14px; }
+.menu-eyebrow { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .22em; color: #c7b88e; line-height: 1.6; }
+.menu-title { font: 500 clamp(68px, 8vw, 110px)/.86 Georgia, 'Times New Roman', serif; letter-spacing: -.055em; color: #f5ead1; text-shadow: none; }
+.menu-title span { display: block; color: #e9b56d; font-style: italic; font-size: .83em; margin-left: .23em; margin-top: 6px; }
+.menu .subtitle { max-width: 330px; margin: 4px 0 3px; font-size: 14px; line-height: 1.7; color: #c2cfc7; }
+.menu-buttons { display: grid; grid-template-columns: 1fr 1fr; width: min(430px, 100%); gap: 8px; }
+.menu-buttons .ui-btn { min-width: 0; min-height: 40px; padding: 9px 14px; font-size: 13px; background: rgba(9, 40, 39, .82); border: 1px solid #61817766; border-radius: 5px; }
+.menu-buttons .ui-btn:hover { background: #204c45; border-color: #e9b56d; transform: translateY(-2px); }
+.menu-buttons .primary { order: -2; grid-column: 1 / -1; min-height: 54px; background: #e9b56d; border-color: #e9b56d; color: #172d28; font-size: 17px; }
+.menu-buttons .primary:hover { background: #f4cb91; }
+.menu-buttons [data-testid='menu-continue'] { order: -1; grid-column: 1 / -1; }
+.menu-buttons [data-testid='menu-continue']:disabled { display: none; }
+.menu-destination { position: absolute; right: 5vw; bottom: 120px; width: clamp(220px, 24vw, 340px); padding: 24px 0 0; border-top: 1px solid #f5ead16b; text-shadow: 0 2px 12px #031d1a; }
+.menu-destination h2 { font: 400 38px/1.1 Georgia, serif; margin: 12px 0; color: #f5ead1; }
+.menu-destination p { font-size: 14px; line-height: 1.65; color: #eef2e6; }
+.menu-destination .destination-description { font-size: 12px; color: #d0ddd2; }
+.destination-link.ui-btn { border: 0; border-bottom: 1px solid #d5b57d; border-radius: 0; padding: 10px 0; background: transparent; min-width: 0; font-size: 13px; }
+.menu-footer { position: absolute; bottom: 24px; left: 5vw; right: 5vw; display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid #d6e4cc33; padding-top: 14px; font-size: 10px; letter-spacing: .12em; color: #c6d4c9; }
+.panel { background: #102c2cf5; border: 1px solid #668c774d; box-shadow: 0 20px 70px #02181366; }
+.ui-btn:disabled { opacity: .45; cursor: default; }
+.ui-btn:disabled:hover { transform: none; }
+.collection-intro { margin: 0; color: #b8ccc2; font-size: 13px; line-height: 1.6; }
+.collection-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: #b8c6a92b; border: 1px solid #b8c6a92b; border-radius: 8px; overflow: hidden; }
+.collection-stat { padding: 12px 16px; background: #133734; display: flex; flex-direction: column; gap: 5px; }
+.collection-stat strong { font: 400 28px Georgia, serif; color: #efc78d; }
+.collection-stat span { font-size: 11px; color: #b6cdc0; }
+.panel.wide { width: min(980px, calc(100vw - 80px)); max-width: 980px; max-height: calc(100dvh - 80px); }
+.collection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ui-btn.compact { min-width: 0; min-height: 36px; padding: 8px 12px; font-size: 12px; border-width: 1px; border-color: #7d9f8f66; border-radius: 5px; }
+.ui-btn[aria-pressed='true'], .trophy-pick[aria-pressed='true'] { color: #ffe2ad; background: #8b6b3338; border-color: #e9b56d; }
+.gallery-controls { grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(170px, 1.3fr); padding-top: 6px; }
+.gallery-controls .field { font-size: 11px; color: #b8ccc2; }
+.gallery-controls .field:last-child { grid-column: auto; }
+.gallery select, .gallery input[type='search'] { min-height: 36px; min-width: 0; width: 100%; box-sizing: border-box; background: #0b2424; font-size: 13px; color-scheme: dark; border-color: #7d9f8f66; }
+.gallery-cards { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); max-height: none; overflow: visible; gap: 16px; }
+.gallery-card { padding: 12px; gap: 10px; background: #0b2325; border-color: #63827866; transition: border-color .2s, transform .2s; }
+.gallery-card:hover { border-color: #bfa670; transform: translateY(-2px); }
+.gallery-card[data-rarity='legendary'] { border-color: #e3b36c99; }
+.gallery-card-name { font: 400 23px Georgia, serif; }
+.gallery-card .catch-rows { gap: 6px 10px; font-size: 12px; }
+.gallery-thumb { aspect-ratio: 16 / 10; }
+.inspect-catch { margin-top: auto; text-align: center; width: 100%; color: #efc78d; }
+.atlas-disclosure { border-bottom: 1px solid #63827866; padding-bottom: 12px; }
+.atlas-disclosure > summary, .achievement-details > summary { cursor: pointer; color: #efc78d; font-size: 12px; padding: 6px 0; }
+.species-atlas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.atlas-species { border: 1px solid #63827866; border-radius: 6px; background: #0b2325; color: #f5ead1; padding: 10px; cursor: pointer; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.atlas-species .gallery-thumb { aspect-ratio: 2.5; }
+.atlas-species span { font-size: 11px; color: #b8ccc2; }
+.atlas-species.undiscovered .gallery-thumb { filter: grayscale(1); opacity: .4; }
+.atlas-species:hover { border-color: #e9b56d; }
+.capture-detail { padding: 20px; width: min(550px, calc(100vw - 64px)); max-height: calc(100dvh - 72px); overflow: auto; color: #f5ead1; background: #102c2c; border: 1px solid #c5a467; border-radius: 12px; box-shadow: 0 30px 100px #0009; }
+.capture-detail::backdrop { background: #031b20cc; backdrop-filter: blur(8px); }
+.capture-detail .gallery-card { margin: 14px 0; }
+.capture-detail .gallery-card:hover { transform: none; }
+.capture-detail .gallery-thumb { max-height: 34vh; object-fit: contain; }
+.detail-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detail-comparison { font-size: 12px; color: #efc78d; }
+.species-facts { font-size: 14px; line-height: 1.7; }
+.species-facts h2 { font: 400 32px Georgia, serif; margin-bottom: 8px; }
+.species-facts h3 { font-size: 14px; color: #efc78d; }
+.capture-detail > .gallery-thumb { margin-top: 16px; max-height: 220px; }
+.next-achievement { padding: 20px; margin: 16px 0; border-left: 3px solid #e9b56d; background: linear-gradient(110deg, #75602c44, #153a34); }
+.next-achievement h3 { font: 400 27px Georgia, serif; margin: 8px 0; }
+.next-achievement p { font-size: 13px; line-height: 1.5; color: #c9d4c6; }
+.achievement-list { margin-top: 14px; }
+.achievement-item { padding: 16px; background: #0b2424; }
+.achievement-item.status-unlocked { border-color: #d0ac6177; }
+.achievement-title { font-family: Georgia, serif; font-size: 19px; font-weight: 400; }
+.achievement-bar-fill { background: linear-gradient(90deg, #468d77, #e5bd77); }
+.achievement-details .note { line-height: 1.6; }
+.trophy-canvas { width: calc(100% - 380px); touch-action: none; cursor: grab; }
+.trophy-canvas:active { cursor: grabbing; }
+.trophy-stats { top: 0; right: 0; bottom: 0; width: 332px; max-height: none; border-radius: 0; border-width: 0 0 0 1px; padding: 32px 24px; }
+.trophy-stats h2 { font: 400 30px Georgia, serif; }
+.trophy-selection { font-size: 13px; color: #e8c68f; line-height: 1.7; min-height: 64px; padding-bottom: 16px; border-bottom: 1px solid #63827866; }
+.trophy-records { list-style: none; padding: 0; gap: 10px; }
+.trophy-pick { display: block; width: 100%; text-align: left; font: inherit; font-size: 13px; line-height: 1.6; padding: 14px; border: 1px solid #63827866; color: #d9e6d7; background: #0b2424; border-radius: 6px; cursor: pointer; }
+.trophy-pick:hover { border-color: #e9b56d; }
+.trophy-tools { position: absolute; bottom: 90px; left: 24px; right: 404px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.trophy-tools .note { width: 100%; font-size: 11px; }
+.trophy-tools .ui-btn { background: #102c2ce6; }
+.trophy-close { min-width: 140px; }
+button:focus-visible, summary:focus-visible, .trophy-canvas:focus-visible { outline: 2px solid #f3c778; outline-offset: 3px; }
+@media (max-width: 900px) {
+  .menu-destination { width: 220px; right: 4vw; }
+  .menu-destination h2 { font-size: 30px; }
+  .menu-buttons { width: min(390px, 100%); }
+  .trophy-canvas { width: calc(100% - 300px); }
+  .trophy-stats { width: 252px; }
+  .trophy-tools { right: 324px; }
+}
+@media (max-width: 680px) {
+  .menu { padding: 28px 24px 68px; justify-content: flex-start; }
+  .menu-main { gap: 12px; }
+  .menu-title { font-size: 76px; }
+  .menu-destination { position: static; width: auto; margin-top: 14px; padding-top: 12px; }
+  .menu-destination h2 { font-size: 26px; margin: 6px 0; }
+  .menu-destination .destination-description, .menu-destination > p:not(.menu-eyebrow) { display: none; }
+  .menu-footer { position: static; margin-top: 16px; padding-top: 14px; font-size: 9px; }
+  .menu-footer span:last-child { display: none; }
+  .menu-buttons { width: 100%; }
+  .panel.wide { width: calc(100vw - 56px); max-width: none; padding: 16px; max-height: calc(100dvh - 48px); }
+  .gallery-controls { grid-template-columns: repeat(2, 1fr); }
+  .gallery-controls .field:last-child { grid-column: 1 / -1; }
+  .collection-summary { grid-template-columns: repeat(2, 1fr); }
+  .collection-stat { padding: 10px; }
+  .collection-stat strong { font-size: 23px; }
+  .collection-actions .ui-btn { width: auto; }
+  .species-atlas { grid-template-columns: 1fr; }
+  .atlas-species { display: grid; grid-template-columns: 80px 1fr; }
+  .atlas-species .gallery-thumb { grid-row: span 2; }
+  .trophy-canvas { width: 100%; height: 56%; }
+  .trophy-stats { top: 56%; right: 12px; left: 12px; bottom: 76px; width: auto; padding: 16px; border: 1px solid #63827866; border-radius: 8px; }
+  .trophy-selection { min-height: 0; }
+  .trophy-tools { top: 12px; bottom: auto; left: 12px; right: 12px; gap: 5px; }
+  .trophy-tools .ui-btn { width: auto; font-size: 11px; }
+  .trophy-close { left: 12px; bottom: 12px; width: auto; min-height: 44px; }
+}
+@media (max-height: 740px) and (min-width: 681px) {
+  .menu { padding-top: 24px; }
+  .menu-title { font-size: 78px; }
+  .menu-main { gap: 10px; }
+  .menu-buttons .ui-btn { min-height: 36px; padding-top: 7px; padding-bottom: 7px; }
+  .menu-buttons .primary { min-height: 46px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gallery-card { transition: none; }
+  .gallery-card:hover, .menu-buttons .ui-btn:hover { transform: none; }
+}

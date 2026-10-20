@@ -75,6 +75,19 @@ describe('arremesso balístico', () => {
 });
 
 describe('linha Verlet', () => {
+  it('reinicia uma linha rompida sem carregar a energia do arremesso anterior', () => {
+    const start = { x: 0, y: 3, z: 0 };
+    const line = new VerletLine(LINE_SPECS.mono020, 1, start, { x: 10, y: 0, z: 0 });
+    line.update(FRAME_MS);
+    expect(line.broken).toBe(true);
+    const end = { x: 4, y: -0.06, z: 0 };
+    line.reset(start, end, 5.2);
+    run(2, (dt) => line.update(dt));
+    expect(line.broken).toBe(false);
+    expect(line.points().at(-1)).toEqual(end);
+    expect(line.points()[0]).toEqual(start);
+    expect(line.points().every((p) => Math.abs(p.x) < 10 && Math.abs(p.y) < 10)).toBe(true);
+  });
   it('rompe acima do limite da própria linha', () => {
     const start = { x: 0, y: 2, z: 0 };
     const farEnd = { x: 10.5, y: 0, z: 0 };
@@ -165,7 +178,7 @@ describe('molinete com drag', () => {
 });
 
 describe('vara em segmentos', () => {
-  it('a flexão é proporcional à tensão', () => {
+  it('aumenta a flexão com a carga e reduz o braço de alavanca ao curvar', () => {
     const one = new RodPhysics();
     const two = new RodPhysics();
     one.setLineTension(1);
@@ -175,8 +188,31 @@ describe('vara em segmentos', () => {
       two.update(dt);
     });
     expect(one.bendRad).toBeGreaterThan(0);
-    expect(two.bendRad / one.bendRad).toBeCloseTo(2, 3);
+    expect(two.bendRad).toBeGreaterThan(one.bendRad);
+    expect(two.bendRad).toBeLessThan(one.bendRad * 2);
     expect(one.bendRad).toBeCloseTo(one.staticBendRad(1), 4);
+  });
+
+  it('não enrola sobre si mesma sob a carga máxima da linha e mantém o comprimento', () => {
+    const rod = new RodPhysics();
+    rod.setLineTension(LINE_SPECS.mono020.breakingStrengthN);
+    run(5, (dt) => rod.update(dt));
+    expect(rod.bendRad).toBeGreaterThan(0.5);
+    expect(rod.bendRad).toBeLessThan(Math.PI / 2);
+    const points = rod.points(0);
+    const length = points.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - points[i]!.x, p.y - points[i]!.y), 0);
+    expect(length).toBeCloseTo(2.4, 8);
+    expect(points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+  });
+
+  it('produz a mesma flexão em 30 e 120 fps', () => {
+    const slow = new RodPhysics();
+    const fast = new RodPhysics();
+    slow.setLineTension(15);
+    fast.setLineTension(15);
+    for (let i = 0; i < 60; i++) slow.update(1000 / 30);
+    for (let i = 0; i < 240; i++) fast.update(1000 / 120);
+    expect(slow.bendRad).toBeCloseTo(fast.bendRad, 7);
   });
 
   it('volta ao repouso vibrando depois de soltar a tensão', () => {

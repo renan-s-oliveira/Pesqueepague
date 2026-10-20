@@ -116,12 +116,21 @@ function speciesThumb(speciesId: SpeciesId): HTMLElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 120 90');
   svg.setAttribute('aria-hidden', 'true');
+  const palette = sp.visual.palette;
+  const depth = 12 + Math.round(sp.visual.proportions.bodyDepth * 18);
+  const bars = sp.id === 'lambari'
+    ? '<circle cx="42" cy="43" r="3"/><circle cx="89" cy="45" r="3"/>'
+    : [46, 58, 70, 82].map((x) => `<path d="M${x},${45 - depth + 5}q-5,${depth} 0,${depth * 2 - 10}" fill="none" stroke="${sp.visual.spots.color}" stroke-width="3" opacity=".65"/>`).join('');
   svg.innerHTML =
-    `<rect width="120" height="90" fill="#0b2430"/>` +
-    `<ellipse cx="58" cy="45" rx="34" ry="${14 + Math.round(sp.visual.proportions.bodyDepth * 20)}" fill="${sp.visual.palette.flank}"/>` +
-    `<ellipse cx="58" cy="38" rx="34" ry="8" fill="${sp.visual.palette.dorsal}" opacity="0.8"/>` +
-    `<polygon points="92,45 112,30 112,60" fill="${sp.visual.palette.fin}"/>` +
-    `<circle cx="34" cy="41" r="2.5" fill="#101418"/>`;
+    '<rect width="120" height="90" fill="#0b2430"/><path d="M0 67Q30 60 60 67T120 67M0 73Q30 66 60 73T120 73" fill="none" stroke="#8eb8a5" stroke-opacity=".1"/>' +
+    `<path d="M86 44L110 28L105 45L111 61L86 48Z" fill="${palette.fin}"/>` +
+    `<path d="M42 ${45 - depth + 4}L50 ${45 - depth - 9}L60 ${45 - depth - 5}L72 ${45 - depth - 7}L82 ${45 - depth + 7}Z" fill="${palette.fin}" opacity=".85"/>` +
+    `<ellipse cx="58" cy="45" rx="34" ry="${depth}" fill="${palette.flank}"/>` +
+    `<path d="M25 43Q55 ${45 - depth * 1.9} 91 44Q60 ${45 - depth * .8} 25 43" fill="${palette.dorsal}" opacity=".75"/>` +
+    `<path d="M28 50Q58 ${45 + depth * 1.5} 88 48Q61 ${45 + depth * .8} 28 50" fill="${palette.belly}" opacity=".6"/>` +
+    `<g fill="${sp.visual.spots.color}">${bars}</g>` +
+    `<path d="M49 48L64 62L62 48M43 34Q51 45 43 56" fill="${palette.fin}" stroke="${palette.dorsal}" stroke-width=".8" opacity=".75"/>` +
+    '<circle cx="34" cy="41" r="3.1" fill="#d8c58c"/><circle cx="34" cy="41" r="1.8" fill="#101418"/><circle cx="33.4" cy="40.4" r=".5" fill="white"/><path d="M24 46L30 46" stroke="#102a28" stroke-width="1"/>';
   box.append(svg);
   return box;
 }
@@ -135,8 +144,14 @@ export class GalleryView {
   readonly root = el('div', 'gallery');
   private readonly status = el('p', 'gallery-status');
   private readonly list = el('ul', 'gallery-cards');
+  private readonly summary = el('div', 'collection-summary');
+  private readonly atlas = el('div', 'species-atlas');
+  private readonly detail = el('dialog', 'capture-detail');
+  private recordsOnly = false;
+  private renderVersion = 0;
   private readonly searchInput: HTMLInputElement;
   private readonly objectUrls: string[] = [];
+  private readonly detailUrls: string[] = [];
   private records: readonly CatchRecord[] = [];
   private filter: GalleryFilter = { speciesId: '', rarity: '', locationId: '', search: '' };
   private sort: GallerySort = 'date_desc';
@@ -148,7 +163,18 @@ export class GalleryView {
     onOpenTrophyRoom: () => void,
   ) {
     this.root.dataset['testid'] = 'gallery';
-    this.root.append(el('h2', '', 'Galeria'));
+    this.root.append(el('p', 'menu-eyebrow', 'MEMÓRIAS DO LAGO'), el('h2', '', 'Galeria'),
+      el('p', 'collection-intro', 'Cada arremesso tem uma história. Abra uma captura para reviver a sua.'));
+    this.detail.setAttribute('aria-label', 'Ficha da captura');
+    this.detail.dataset['testid'] = 'gallery-detail';
+    this.detail.addEventListener('close', () => {
+      if (this.detail.open) return;
+      this.releaseDetailPhotos();
+      this.detail.replaceChildren();
+    });
+    this.detail.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') event.stopPropagation();
+    });
 
     const controls = el('div', 'gallery-controls');
     const species = labeledSelect(
@@ -195,12 +221,35 @@ export class GalleryView {
     this.status.setAttribute('aria-live', 'polite');
     this.list.setAttribute('aria-label', 'Capturas registradas');
 
-    const trophyBtn = el('button', 'ui-btn', 'Sala de troféus');
+    const trophyBtn = el('button', 'ui-btn compact', 'Sala de troféus ↗');
     trophyBtn.type = 'button';
     trophyBtn.dataset['testid'] = 'gallery-trophy-room';
     trophyBtn.addEventListener('click', onOpenTrophyRoom);
 
-    this.root.append(controls, this.status, this.list, trophyBtn);
+    const quick = el('div', 'collection-actions');
+    const records = el('button', 'ui-btn compact', 'Só recordes');
+    records.type = 'button';
+    records.dataset['testid'] = 'gallery-records-only';
+    records.setAttribute('aria-pressed', 'false');
+    records.addEventListener('click', () => {
+      this.recordsOnly = !this.recordsOnly;
+      records.setAttribute('aria-pressed', String(this.recordsOnly));
+      this.render();
+    });
+    const reset = el('button', 'ui-btn compact', 'Limpar filtros');
+    reset.type = 'button';
+    reset.addEventListener('click', () => {
+      this.filter = { speciesId: '', rarity: '', locationId: '', search: '' };
+      this.searchInput.value = '';
+      for (const select of [species.select, rarity.select, env.select]) select.value = '';
+      this.recordsOnly = false;
+      records.setAttribute('aria-pressed', 'false');
+      this.render();
+    });
+    quick.append(records, reset, trophyBtn);
+    const atlas = el('details', 'atlas-disclosure');
+    atlas.append(el('summary', '', 'Atlas do lago · descubra suas espécies'), this.atlas);
+    this.root.append(this.summary, atlas, controls, quick, this.status, this.list, this.detail);
   }
 
   private setFilter(next: GalleryFilter): void {
@@ -227,7 +276,27 @@ export class GalleryView {
 
   private render(): void {
     if (!this.loaded) return;
-    const visible = sortCatches(filterCatches(this.records, this.filter), this.sort);
+    this.renderVersion++;
+    for (const url of this.objectUrls) URL.revokeObjectURL(url);
+    this.objectUrls.length = 0;
+    const visible = sortCatches(filterCatches(this.records, this.filter).filter((r) => !this.recordsOnly || r.isPersonalRecord), this.sort);
+    const speciesCount = new Set(this.records.map((r) => r.speciesId)).size;
+    const best = Math.max(0, ...this.records.map((r) => r.weightKg));
+    this.summary.replaceChildren();
+    for (const [value, label] of [[String(this.records.length), 'capturas'], [`${speciesCount}/${SPECIES.length}`, 'espécies descobertas'], [formatKg(best), 'maior captura'], [String(this.records.filter((r) => r.disposition === 'released').length), 'de volta ao lago']]) {
+      const stat = el('div', 'collection-stat');
+      stat.append(el('strong', '', value), el('span', '', label));
+      this.summary.append(stat);
+    }
+    this.atlas.replaceChildren();
+    for (const sp of SPECIES) {
+      const catches = this.records.filter((r) => r.speciesId === sp.id);
+      const tile = el('button', `atlas-species ${catches.length ? 'discovered' : 'undiscovered'}`);
+      tile.type = 'button';
+      tile.append(speciesThumb(sp.id), el('strong', '', sp.name), el('span', '', catches.length ? `${catches.length} capturas · ${formatKg(Math.max(...catches.map((r) => r.weightKg)))}` : 'Ainda por descobrir'));
+      tile.addEventListener('click', () => this.openSpecies(sp.id));
+      this.atlas.append(tile);
+    }
     this.list.replaceChildren();
     if (this.records.length === 0) {
       const empty = el('li', 'gallery-empty', 'Nenhuma captura ainda. Pesque seu primeiro peixe e ele aparece aqui, com foto e ficha.');
@@ -247,23 +316,25 @@ export class GalleryView {
     for (const record of visible) this.list.append(this.card(record));
   }
 
-  private card(record: CatchRecord): HTMLElement {
+  private card(record: CatchRecord, interactive = true): HTMLElement {
     const sp = getSpecies(record.speciesId);
-    const li = el('li', 'gallery-card');
+    const li = el(interactive ? 'li' : 'div', 'gallery-card');
     li.dataset['testid'] = 'gallery-card';
+    li.dataset['rarity'] = record.rarity;
     if (record.photoId !== undefined && this.data !== null) {
       const img = el('img', 'gallery-thumb');
       img.alt = `Foto da captura: ${sp.name}, ${formatKg(record.weightKg)}`;
       img.loading = 'lazy';
       const placeholder = speciesThumb(record.speciesId);
       li.append(placeholder);
+      const version = this.renderVersion;
       void this.data.getPhoto(record.photoId).then((blob) => {
-        if (this.disposed || blob === undefined) return;
+        if (this.disposed || version !== this.renderVersion || blob === undefined || !placeholder.isConnected) return;
         const url = URL.createObjectURL(blob);
-        this.objectUrls.push(url);
+        (interactive ? this.objectUrls : this.detailUrls).push(url);
         img.src = url;
         placeholder.replaceWith(img);
-      });
+      }).catch(() => { /* A miniatura da espécie continua disponível se a foto falhar. */ });
     } else {
       li.append(speciesThumb(record.speciesId));
     }
@@ -283,13 +354,84 @@ export class GalleryView {
       rows.append(el('dt', '', label), el('dd', '', value));
     }
     li.append(rows);
+    if (interactive) {
+      const inspect = el('button', 'ui-btn compact inspect-catch', 'Abrir captura ↗');
+      inspect.type = 'button';
+      inspect.setAttribute('aria-label', `Abrir captura de ${sp.name}, ${formatKg(record.weightKg)}`);
+      inspect.addEventListener('click', () => this.openDetail(record));
+      li.append(inspect);
+    }
     return li;
+  }
+
+  private openDetail(record: CatchRecord): void {
+    this.detail.setAttribute('aria-label', 'Ficha da captura');
+    const visible = sortCatches(filterCatches(this.records, this.filter).filter((r) => !this.recordsOnly || r.isPersonalRecord), this.sort);
+    let index = Math.max(0, visible.findIndex((r) => r.id === record.id));
+    const render = (): void => {
+      this.releaseDetailPhotos();
+      const current = visible[index];
+      if (!current) return;
+      const header = el('div', 'detail-toolbar');
+      const close = el('button', 'ui-btn compact', 'Fechar ×');
+      close.type = 'button';
+      close.addEventListener('click', () => this.detail.close());
+      header.append(el('span', 'menu-eyebrow', `ÁLBUM / ${index + 1} DE ${visible.length}`), close);
+      const card = this.card(current, false);
+      card.removeAttribute('data-testid');
+      const best = Math.max(...this.records.filter((r) => r.speciesId === current.speciesId).map((r) => r.weightKg));
+      const comparison = el('p', 'detail-comparison', `${Math.round(current.weightKg / best * 100)}% do seu recorde nesta espécie · Recorde: ${formatKg(best)}`);
+      const nav = el('div', 'detail-toolbar');
+      for (const [label, offset] of [['← Anterior', -1], ['Próxima →', 1]] as const) {
+        const button = el('button', 'ui-btn compact', label);
+        button.type = 'button';
+        button.disabled = index + offset < 0 || index + offset >= visible.length;
+        button.addEventListener('click', () => { index += offset; render(); });
+        nav.append(button);
+      }
+      this.detail.replaceChildren(header, card, comparison, nav);
+    };
+    render();
+    this.detail.showModal();
+  }
+
+  private openSpecies(id: SpeciesId): void {
+    this.releaseDetailPhotos();
+    const sp = getSpecies(id);
+    const head = el('div', 'detail-toolbar');
+    const close = el('button', 'ui-btn compact', 'Fechar ×');
+    close.type = 'button';
+    close.addEventListener('click', () => this.detail.close());
+    head.append(el('span', 'menu-eyebrow', 'ATLAS DO LAGO'), close);
+    const facts = el('div', 'species-facts');
+    facts.append(el('h2', '', sp.name), el('p', 'catch-scientific', sp.scientificName), el('p', '', sp.habitat),
+      el('p', '', `Profundidade: ${sp.depthRangeM.min}–${sp.depthRangeM.max} m · Água: ${sp.preferredTempC.min}–${sp.preferredTempC.max} °C`),
+      el('h3', '', 'Prepare sua próxima pescaria'), el('p', '', `Iscas favoritas: ${sp.preferredLures.map((l) => LURE_LABELS[l]).join(', ')}.`));
+    for (const curiosity of sp.curiosities) facts.append(el('p', 'note', curiosity));
+    const browse = el('button', 'ui-btn compact', 'Ver capturas desta espécie →');
+    browse.type = 'button';
+    browse.addEventListener('click', () => {
+      const select = this.root.querySelector<HTMLSelectElement>('[data-testid="gallery-filter-species"]');
+      if (select) select.value = id;
+      this.setFilter({ ...this.filter, speciesId: id });
+      this.detail.close();
+    });
+    this.detail.setAttribute('aria-label', `Atlas: ${sp.name}`);
+    this.detail.replaceChildren(head, speciesThumb(id), facts, browse);
+    this.detail.showModal();
   }
 
   dispose(): void {
     this.disposed = true;
+    this.detail.close();
+    this.releaseDetailPhotos();
     for (const url of this.objectUrls) URL.revokeObjectURL(url);
     this.objectUrls.length = 0;
     this.root.remove();
+  }
+
+  private releaseDetailPhotos(): void {
+    for (const url of this.detailUrls) URL.revokeObjectURL(url);
+    this.detailUrls.length = 0;
   }
 }

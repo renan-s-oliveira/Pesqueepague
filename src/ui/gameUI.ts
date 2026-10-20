@@ -147,25 +147,35 @@ export class GameUI {
 
     this.loading.append(el('h1', 'title', 'FISHING PARADISE 3D'), this.loadingMeter.root, this.loadingText);
 
-    const title = el('h1', 'title', 'FISHING PARADISE 3D');
-    const sub = el('p', 'subtitle', 'Um fim de tarde no pesque e pague');
+    const eyebrow = el('p', 'menu-eyebrow', 'SEU REFÚGIO À BEIRA DO LAGO');
+    const title = el('h1', 'title menu-title', 'Pesque');
+    title.append(el('span', '', '& Pague'));
+    const sub = el('p', 'subtitle', 'Desacelere. Lance a linha. Conte uma boa história.');
     const nav = el('nav', 'menu-buttons');
     nav.setAttribute('aria-label', 'Menu principal');
     this.continueBtn = button('Continuar', 'menu-continue', () => h.onPlay());
     this.continueBtn.title = 'Volta ao lago com seu progresso salvo.';
     nav.append(
       this.continueBtn,
-      button('Nova pescaria', 'menu-play', () => h.onPlay(), 'ui-btn primary'),
+      button('Nova pescaria ↗', 'menu-play', () => h.onPlay(), 'ui-btn primary'),
       button('Selecionar cenário', 'menu-scenario', () => this.openPanel(this.panel, this.scenarioContent(), this.menuMain)),
       button('Equipamentos', 'menu-equipment', () => this.openPanel(this.panel, this.equipmentContent(), this.menuMain)),
       button('Galeria', 'menu-gallery', () => this.openGallery()),
       button('Conquistas', 'menu-achievements', () => this.openAchievements()),
+      button('Sala de troféus', 'menu-trophies', () => h.onOpenTrophyRoom()),
       button('Configurações', 'menu-settings', () => this.openPanel(this.panel, this.settingsContent(), this.menuMain)),
       button('Como jogar', 'menu-help', () => this.openPanel(this.panel, this.helpContent(), this.menuMain)),
       button('Diário', 'menu-journal', () => this.openPanel(this.panel, this.journalContent(), this.menuMain)),
       button('Créditos', 'menu-credits', () => this.openPanel(this.panel, this.creditsContent(), this.menuMain)),
     );
-    this.menuMain.append(title, sub, nav);
+    const destination = el('aside', 'menu-destination');
+    destination.append(el('span', 'menu-eyebrow', '01 / O SEU PRÓXIMO ARREMESSO'), el('h2', '', 'Lago Tropical'),
+      el('p', '', 'Águas tranquilas. Grandes histórias.'),
+      el('p', 'destination-description', 'Explore o lago, descubra suas espécies e transforme cada captura em uma lembrança.'),
+      button('Explorar minha coleção →', 'menu-collection', () => this.openGallery(), 'ui-btn destination-link'));
+    const footer = el('div', 'menu-footer');
+    footer.append(el('span', '', 'PESCARIA EM PRIMEIRA PESSOA'), el('span', '', 'Mouse para olhar · Espaço para arremessar'));
+    this.menuMain.append(eyebrow, title, sub, nav, destination, footer);
     this.panel.hidden = true;
     this.menu.dataset['testid'] = 'menu';
     this.menu.append(this.menuMain, this.panel);
